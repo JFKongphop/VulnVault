@@ -1,0 +1,10 @@
+{
+  "solidity.packageDefaultDependenciesContractsDirectory": "contracts",
+  "solidity.packageDefaultDependenciesDirectory": "node_modules",
+  "solidity.remappings": [
+    "@fhevm/=node_modules/@fhevm/",
+    "@zama-fhe/=node_modules/@zama-fhe/",
+    "@openzeppelin/=node_modules/@openzeppelin/",
+    "hardhat/=node_modules/hardhat/"
+  ]
+}
