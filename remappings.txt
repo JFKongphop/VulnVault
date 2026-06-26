@@ -1,0 +1,4 @@
+@fhevm/=node_modules/@fhevm/
+@zama-fhe/=node_modules/@zama-fhe/
+@openzeppelin/=node_modules/@openzeppelin/
+hardhat/=node_modules/hardhat/

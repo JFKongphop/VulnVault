@@ -9,10 +9,6 @@ import "hardhat-gas-reporter";
 import type { HardhatUserConfig } from "hardhat/config";
 import "solidity-coverage";
 
-import "./tasks/accounts";
-import "./tasks/FHECounter";
-import "./tasks/relayer";
-
 dotenv.config();
 
 const MNEMONIC: string = process.env.MNEMONIC ?? "test test test test test test test test test test test junk";
@@ -39,6 +35,7 @@ const config: HardhatUserConfig = {
         mnemonic: MNEMONIC,
       },
       chainId: 31337,
+      allowUnlimitedContractSize: true,
     },
     anvil: {
       accounts: {
@@ -73,7 +70,7 @@ const config: HardhatUserConfig = {
       // https://hardhat.org/hardhat-network/#solidity-optimizer-support
       optimizer: {
         enabled: true,
-        runs: 800,
+        runs: 1,
       },
       viaIR: true,
       evmVersion: "cancun",
