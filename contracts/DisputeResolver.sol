@@ -163,7 +163,7 @@ contract DisputeResolver is ZamaEthereumConfig {
 
     d.status = DisputeStatus.Resolved;
     _forReporterHandle[disputeId] = euint8.unwrap(forReporter);
-    _forAdminHandle[disputeId]    = euint8.unwrap(forAdmin);
+    _forAdminHandle[disputeId] = euint8.unwrap(forAdmin);
     _reporterWonHandle[disputeId] = ebool.unwrap(reporterWonEnc);
     emit DisputeResolved(disputeId, euint8.unwrap(forReporter), euint8.unwrap(forAdmin), ebool.unwrap(reporterWonEnc));
   }
@@ -208,9 +208,9 @@ contract DisputeResolver is ZamaEthereumConfig {
     returns (DisputeStatus status, bytes32 forReporter, bytes32 forAdmin, bytes32 reporterWon)
   {
     Dispute storage d = _disputes[disputeId];
-    status      = d.status;
+    status = d.status;
     forReporter = _forReporterHandle[disputeId];
-    forAdmin    = _forAdminHandle[disputeId];
+    forAdmin = _forAdminHandle[disputeId];
     reporterWon = _reporterWonHandle[disputeId];
   }
 

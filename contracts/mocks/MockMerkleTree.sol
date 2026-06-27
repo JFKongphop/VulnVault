@@ -8,13 +8,11 @@ import {IMerkleTree} from "../interfaces/IMerkleTree.sol";
 ///         This mock accepts any root as valid for integration tests.
 contract MockMerkleTree is IMerkleTree {
   mapping(bytes32 => bool) public knownRoots;
+  mapping(bytes32 => bool) private _commitments;
   bytes32 public currentRoot;
 
-  function insertCommitment(
-    bytes32 /* commitment */
-  )
-    external {
-    // no-op in mock
+  function insertCommitment(bytes32 commitment) external {
+    _commitments[commitment] = true;
   }
 
   function insertApprovedLeaf(bytes32 leaf) external {
@@ -28,5 +26,9 @@ contract MockMerkleTree is IMerkleTree {
 
   function getRoot() external view returns (bytes32) {
     return currentRoot;
+  }
+
+  function commitments(bytes32 commitment) external view returns (bool) {
+    return _commitments[commitment];
   }
 }
