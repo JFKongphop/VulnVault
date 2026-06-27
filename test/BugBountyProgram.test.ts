@@ -49,22 +49,24 @@ describe("BugBountyProgram", function () {
       gistLink: string;
       attachments: string;
     },
-    impactType: number,
-    severity: number,
-  ): Promise<string> {
+    signer?: any,
+    impactType: number = 2,
+    severity: number = 2,
+  ): Promise<{ submissionId: string; encryptedReport: any; symmetricKey: Buffer }> {
+    const reporter = signer || signers[2];
     const encryption = new BugReportEncryption();
     const encryptedReport = encryption.encryptReport(reportData);
     const encryptedSymmetricKey = encryption.encryptKeyForAdmin(
       adminKeys.publicKey,
     );
 
-    const input = fhevm.createEncryptedInput(bbAddr, signers[2].address);
+    const input = fhevm.createEncryptedInput(bbAddr, reporter.address);
     input.add8(impactType);
     input.add8(severity);
     const { handles, inputProof } = await input.encrypt();
 
     const tx = await bb
-      .connect(signers[2])
+      .connect(reporter)
       .submitReport(
         ethers.randomBytes(32),
         encryptedReport.encryptedProtocol,
@@ -84,7 +86,13 @@ describe("BugBountyProgram", function () {
     const event = receipt?.logs.find(
       (l: any) => l.fragment?.name === "ReportSubmitted",
     );
-    return (event as any).args[0];
+    const submissionId = (event as any).args[0];
+
+    return {
+      submissionId,
+      encryptedReport,
+      symmetricKey: encryption.getSymmetricKey(),
+    };
   }
 
   // ── Production Encryption Tests (Real AES-GCM + RSA-OAEP + FHE)
@@ -151,7 +159,7 @@ describe("BugBountyProgram", function () {
       const submissionId = (event as any).args[0];
 
       // ──────────────────────────────────────────────────────
-      // ADMIN SIDE: Decrypt report data
+      // ADMIN SIDE: Decrypt report data FROM ON-CHAIN
       // ──────────────────────────────────────────────────────
       const adminDecryption = new AdminDecryption(adminKeys.privateKey);
 
@@ -160,28 +168,27 @@ describe("BugBountyProgram", function () {
         .connect(signers[1])
         .getEncryptedSymmetricKey(submissionId);
 
-      // 2. Decrypt symmetric key with admin's private key
+      // 2. Retrieve all encrypted report data FROM CONTRACT (not local variable!)
+      const onChainEncryptedData = await bb
+        .connect(signers[1])
+        .getEncryptedReportData(submissionId);
+
+      // 3. Decrypt symmetric key with admin's private key
       const decryptedSymmetricKey = adminDecryption.decryptSymmetricKey(
         Buffer.from(retrievedEncryptedKey.slice(2), "hex"),
       );
 
-      // 3. Decrypt all report fields with symmetric key
+      // 4. Decrypt all report fields using ON-CHAIN data
       const decryptedReport = adminDecryption.decryptReport(
         decryptedSymmetricKey,
         {
-          encryptedProtocol: Buffer.from(encryptedReport.encryptedProtocol),
-          encryptedContractAddress: Buffer.from(
-            encryptedReport.encryptedContractAddress,
-          ),
-          encryptedTitle: Buffer.from(encryptedReport.encryptedTitle),
-          encryptedDescription: Buffer.from(
-            encryptedReport.encryptedDescription,
-          ),
-          encryptedPoC: Buffer.from(encryptedReport.encryptedPoC),
-          encryptedGistLink: Buffer.from(encryptedReport.encryptedGistLink),
-          encryptedAttachments: Buffer.from(
-            encryptedReport.encryptedAttachments,
-          ),
+          encryptedProtocol: Buffer.from(onChainEncryptedData[0].slice(2), "hex"),
+          encryptedContractAddress: Buffer.from(onChainEncryptedData[1].slice(2), "hex"),
+          encryptedTitle: Buffer.from(onChainEncryptedData[2].slice(2), "hex"),
+          encryptedDescription: Buffer.from(onChainEncryptedData[3].slice(2), "hex"),
+          encryptedPoC: Buffer.from(onChainEncryptedData[4].slice(2), "hex"),
+          encryptedGistLink: Buffer.from(onChainEncryptedData[5].slice(2), "hex"),
+          encryptedAttachments: Buffer.from(onChainEncryptedData[6].slice(2), "hex"),
         },
       );
 
@@ -225,7 +232,7 @@ describe("BugBountyProgram", function () {
       input.add8(2);
       const { handles, inputProof } = await input.encrypt();
 
-      await bb
+      const tx = await bb
         .connect(signers[2])
         .submitReport(
           ethers.randomBytes(32),
@@ -242,20 +249,30 @@ describe("BugBountyProgram", function () {
           encryptedSymmetricKey,
         );
 
+      const receipt = await tx.wait();
+      const event = receipt?.logs.find(
+        (l: any) => l.fragment?.name === "ReportSubmitted",
+      );
+      const submissionId = (event as any).args[0];
+
       // ──────────────────────────────────────────────────────
-      // REPORTER decrypts using their backed-up key
+      // REPORTER decrypts using their backed-up key + ON-CHAIN data
       // ──────────────────────────────────────────────────────
+      
+      // Admin allows reporter to view (in production, this would be after approval or through ZK proof)
+      const onChainData = await bb
+        .connect(signers[1])
+        .getEncryptedReportData(submissionId);
+
       const reporterDecryption = new AdminDecryption(Buffer.alloc(0)); // No admin key needed
       const decrypted = reporterDecryption.decryptReport(reporterBackupKey, {
-        encryptedProtocol: Buffer.from(encryptedReport.encryptedProtocol),
-        encryptedContractAddress: Buffer.from(
-          encryptedReport.encryptedContractAddress,
-        ),
-        encryptedTitle: Buffer.from(encryptedReport.encryptedTitle),
-        encryptedDescription: Buffer.from(encryptedReport.encryptedDescription),
-        encryptedPoC: Buffer.from(encryptedReport.encryptedPoC),
-        encryptedGistLink: Buffer.from(encryptedReport.encryptedGistLink),
-        encryptedAttachments: Buffer.from(encryptedReport.encryptedAttachments),
+        encryptedProtocol: Buffer.from(onChainData[0].slice(2), "hex"),
+        encryptedContractAddress: Buffer.from(onChainData[1].slice(2), "hex"),
+        encryptedTitle: Buffer.from(onChainData[2].slice(2), "hex"),
+        encryptedDescription: Buffer.from(onChainData[3].slice(2), "hex"),
+        encryptedPoC: Buffer.from(onChainData[4].slice(2), "hex"),
+        encryptedGistLink: Buffer.from(onChainData[5].slice(2), "hex"),
+        encryptedAttachments: Buffer.from(onChainData[6].slice(2), "hex"),
       });
 
       expect(decrypted.protocol).to.equal(reportData.protocol);
@@ -459,28 +476,32 @@ describe("BugBountyProgram", function () {
         Buffer.from(retrievedKey2.slice(2), "hex"),
       );
 
+      // Retrieve encrypted data from on-chain
+      const onChainData1 = await bb
+        .connect(signers[1])
+        .getEncryptedReportData(sid1);
+      const onChainData2 = await bb
+        .connect(signers[1])
+        .getEncryptedReportData(sid2);
+
       const decrypted1 = adminDecryption.decryptReport(symmetricKey1, {
-        encryptedProtocol: Buffer.from(encrypted1.encryptedProtocol),
-        encryptedContractAddress: Buffer.from(
-          encrypted1.encryptedContractAddress,
-        ),
-        encryptedTitle: Buffer.from(encrypted1.encryptedTitle),
-        encryptedDescription: Buffer.from(encrypted1.encryptedDescription),
-        encryptedPoC: Buffer.from(encrypted1.encryptedPoC),
-        encryptedGistLink: Buffer.from(encrypted1.encryptedGistLink),
-        encryptedAttachments: Buffer.from(encrypted1.encryptedAttachments),
+        encryptedProtocol: Buffer.from(onChainData1[0].slice(2), "hex"),
+        encryptedContractAddress: Buffer.from(onChainData1[1].slice(2), "hex"),
+        encryptedTitle: Buffer.from(onChainData1[2].slice(2), "hex"),
+        encryptedDescription: Buffer.from(onChainData1[3].slice(2), "hex"),
+        encryptedPoC: Buffer.from(onChainData1[4].slice(2), "hex"),
+        encryptedGistLink: Buffer.from(onChainData1[5].slice(2), "hex"),
+        encryptedAttachments: Buffer.from(onChainData1[6].slice(2), "hex"),
       });
 
       const decrypted2 = adminDecryption.decryptReport(symmetricKey2, {
-        encryptedProtocol: Buffer.from(encrypted2.encryptedProtocol),
-        encryptedContractAddress: Buffer.from(
-          encrypted2.encryptedContractAddress,
-        ),
-        encryptedTitle: Buffer.from(encrypted2.encryptedTitle),
-        encryptedDescription: Buffer.from(encrypted2.encryptedDescription),
-        encryptedPoC: Buffer.from(encrypted2.encryptedPoC),
-        encryptedGistLink: Buffer.from(encrypted2.encryptedGistLink),
-        encryptedAttachments: Buffer.from(encrypted2.encryptedAttachments),
+        encryptedProtocol: Buffer.from(onChainData2[0].slice(2), "hex"),
+        encryptedContractAddress: Buffer.from(onChainData2[1].slice(2), "hex"),
+        encryptedTitle: Buffer.from(onChainData2[2].slice(2), "hex"),
+        encryptedDescription: Buffer.from(onChainData2[3].slice(2), "hex"),
+        encryptedPoC: Buffer.from(onChainData2[4].slice(2), "hex"),
+        encryptedGistLink: Buffer.from(onChainData2[5].slice(2), "hex"),
+        encryptedAttachments: Buffer.from(onChainData2[6].slice(2), "hex"),
       });
 
       expect(decrypted1.title).to.equal("Bug1");
@@ -591,6 +612,11 @@ describe("BugBountyProgram", function () {
       await expect(
         bb.connect(signers[3]).getEncryptedSymmetricKey(submissionId),
       ).to.be.revertedWith("Not admin");
+
+      // Also cannot retrieve encrypted report data
+      await expect(
+        bb.connect(signers[3]).getEncryptedReportData(submissionId),
+      ).to.be.revertedWith("Not admin");
     });
 
     it("non-reporter cannot decrypt without symmetric key", async () => {
@@ -661,6 +687,11 @@ describe("BugBountyProgram", function () {
         bb.connect(signers[2]).getEncryptedSymmetricKey(submissionId),
       ).to.be.revertedWith("Not admin"); // Reporter cannot retrieve it
 
+      // Reporter also cannot retrieve encrypted report data
+      await expect(
+        bb.connect(signers[2]).getEncryptedReportData(submissionId),
+      ).to.be.revertedWith("Not admin");
+
       // Even if reporter somehow gets the encrypted key, they can't decrypt it
       const reporterDecryption = new AdminDecryption(Buffer.alloc(0));
       expect(() => {
@@ -686,17 +717,20 @@ describe("BugBountyProgram", function () {
       // Verify key is 32 bytes (256 bits)
       expect(symmetricKey.length).to.equal(32);
 
-      // Verify admin can decrypt report with this key
+      // Retrieve encrypted report data from on-chain
+      const onChainData = await bb
+        .connect(signers[1])
+        .getEncryptedReportData(submissionId);
+
+      // Verify admin can decrypt report with this key using ON-CHAIN data
       const decrypted = adminDecryption.decryptReport(symmetricKey, {
-        encryptedProtocol: Buffer.from(encryptedReport.encryptedProtocol),
-        encryptedContractAddress: Buffer.from(
-          encryptedReport.encryptedContractAddress,
-        ),
-        encryptedTitle: Buffer.from(encryptedReport.encryptedTitle),
-        encryptedDescription: Buffer.from(encryptedReport.encryptedDescription),
-        encryptedPoC: Buffer.from(encryptedReport.encryptedPoC),
-        encryptedGistLink: Buffer.from(encryptedReport.encryptedGistLink),
-        encryptedAttachments: Buffer.from(encryptedReport.encryptedAttachments),
+        encryptedProtocol: Buffer.from(onChainData[0].slice(2), "hex"),
+        encryptedContractAddress: Buffer.from(onChainData[1].slice(2), "hex"),
+        encryptedTitle: Buffer.from(onChainData[2].slice(2), "hex"),
+        encryptedDescription: Buffer.from(onChainData[3].slice(2), "hex"),
+        encryptedPoC: Buffer.from(onChainData[4].slice(2), "hex"),
+        encryptedGistLink: Buffer.from(onChainData[5].slice(2), "hex"),
+        encryptedAttachments: Buffer.from(onChainData[6].slice(2), "hex"),
       });
 
       expect(decrypted.title).to.equal("Private Vulnerability Report");
@@ -754,6 +788,240 @@ describe("BugBountyProgram", function () {
           });
         }).to.throw(); // AES-GCM auth tag fails for wrong key
       }
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Reporter Ownership Functions
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe("Reporter Ownership & Access", () => {
+    let adminKeys: RSAKeyPair;
+    let submissionId1: string, submissionId2: string, submissionId3: string;
+
+    beforeEach(async () => {
+      // Setup admin keys
+      adminKeys = generateRSAKeyPair();
+      await bb.connect(signers[1]).setAdminPublicKey(adminKeys.publicKey);
+
+      // Reporter 1 (signers[2]) submits 2 reports
+      const result1 = await submitWithRealEncryption(adminKeys, {
+        protocol: "Uniswap",
+        contractAddress: "0x1234",
+        title: "Bug 1",
+        description: "First bug",
+        poc: "exploit1",
+        gistLink: "https://gist1",
+        attachments: "hash1",
+      });
+      submissionId1 = result1.submissionId;
+
+      const result2 = await submitWithRealEncryption(adminKeys, {
+        protocol: "Aave",
+        contractAddress: "0x5678",
+        title: "Bug 2",
+        description: "Second bug",
+        poc: "exploit2",
+        gistLink: "https://gist2",
+        attachments: "hash2",
+      });
+      submissionId2 = result2.submissionId;
+
+      // Reporter 2 (signers[3]) submits 1 report
+      const result3 = await submitWithRealEncryption(
+        adminKeys,
+        {
+          protocol: "Compound",
+          contractAddress: "0x9abc",
+          title: "Bug 3",
+          description: "Third bug",
+          poc: "exploit3",
+          gistLink: "https://gist3",
+          attachments: "hash3",
+        },
+        signers[3],
+      );
+      submissionId3 = result3.submissionId;
+    });
+
+    it("getMySubmissionIds: reporter can list only their own reports", async () => {
+      // Reporter 1 should see 2 reports
+      const reporter1Submissions = await bb
+        .connect(signers[2])
+        .getMySubmissionIds();
+      expect(reporter1Submissions.length).to.equal(2);
+      expect(reporter1Submissions).to.include(submissionId1);
+      expect(reporter1Submissions).to.include(submissionId2);
+      expect(reporter1Submissions).to.not.include(submissionId3);
+
+      // Reporter 2 should see 1 report
+      const reporter2Submissions = await bb
+        .connect(signers[3])
+        .getMySubmissionIds();
+      expect(reporter2Submissions.length).to.equal(1);
+      expect(reporter2Submissions).to.include(submissionId3);
+      expect(reporter2Submissions).to.not.include(submissionId1);
+      expect(reporter2Submissions).to.not.include(submissionId2);
+
+      // Admin should see 0 reports (didn't submit any)
+      const adminSubmissions = await bb.connect(signers[1]).getMySubmissionIds();
+      expect(adminSubmissions.length).to.equal(0);
+    });
+
+    it("getMyEncryptedReportData: reporter can retrieve own encrypted data", async () => {
+      // Reporter 1 retrieves their own report
+      const onChainData = await bb
+        .connect(signers[2])
+        .getMyEncryptedReportData(submissionId1);
+
+      expect(onChainData[0]).to.not.equal("0x"); // Has encrypted protocol
+      expect(onChainData[2]).to.not.equal("0x"); // Has encrypted title
+
+      // Verify reporter can decrypt it with their backed-up symmetric key
+      const adminDecryption = new AdminDecryption(adminKeys.privateKey);
+      const retrievedKey = await bb
+        .connect(signers[1])
+        .getEncryptedSymmetricKey(submissionId1);
+      const symmetricKey = adminDecryption.decryptSymmetricKey(
+        Buffer.from(retrievedKey.slice(2), "hex"),
+      );
+
+      const decrypted = adminDecryption.decryptReport(symmetricKey, {
+        encryptedProtocol: Buffer.from(onChainData[0].slice(2), "hex"),
+        encryptedContractAddress: Buffer.from(onChainData[1].slice(2), "hex"),
+        encryptedTitle: Buffer.from(onChainData[2].slice(2), "hex"),
+        encryptedDescription: Buffer.from(onChainData[3].slice(2), "hex"),
+        encryptedPoC: Buffer.from(onChainData[4].slice(2), "hex"),
+        encryptedGistLink: Buffer.from(onChainData[5].slice(2), "hex"),
+        encryptedAttachments: Buffer.from(onChainData[6].slice(2), "hex"),
+      });
+
+      expect(decrypted.protocol).to.equal("Uniswap");
+      expect(decrypted.title).to.equal("Bug 1");
+    });
+
+    it("getMyEncryptedReportData: non-owner cannot retrieve someone else's report", async () => {
+      // Reporter 2 tries to access Reporter 1's report
+      await expect(
+        bb.connect(signers[3]).getMyEncryptedReportData(submissionId1),
+      ).to.be.revertedWith("Not report owner");
+
+      // Reporter 1 tries to access Reporter 2's report
+      await expect(
+        bb.connect(signers[2]).getMyEncryptedReportData(submissionId3),
+      ).to.be.revertedWith("Not report owner");
+    });
+
+    it("decryptMyReport: only report owner can make FHE fields public", async () => {
+      // Reporter 1 can decrypt their own report
+      await expect(bb.connect(signers[2]).decryptMyReport(submissionId1)).to.not
+        .be.reverted;
+
+      // Reporter 2 cannot decrypt Reporter 1's report
+      await expect(
+        bb.connect(signers[3]).decryptMyReport(submissionId1),
+      ).to.be.revertedWith("Not report owner");
+
+      // Random user cannot decrypt
+      await expect(
+        bb.connect(signers[4]).decryptMyReport(submissionId1),
+      ).to.be.revertedWith("Not report owner");
+    });
+
+    it("decryptMyReport: emits ReportDecrypted event with FHE handles", async () => {
+      const tx = await bb.connect(signers[2]).decryptMyReport(submissionId1);
+      const receipt = await tx.wait();
+
+      const event = receipt?.logs.find(
+        (l: any) => l.fragment?.name === "ReportDecrypted",
+      );
+      expect(event).to.not.be.undefined;
+
+      const args = (event as any).args;
+      expect(args[0]).to.equal(submissionId1);
+      expect(args[1]).to.not.equal("0x0000000000000000000000000000000000000000000000000000000000000000"); // impactHandle
+      expect(args[2]).to.not.equal("0x0000000000000000000000000000000000000000000000000000000000000000"); // severityHandle
+    });
+
+    it("getAllSubmissionIds: returns all reports from all users", async () => {
+      const allSubmissions = await bb.getAllSubmissionIds();
+      expect(allSubmissions.length).to.be.at.least(3);
+      expect(allSubmissions).to.include(submissionId1);
+      expect(allSubmissions).to.include(submissionId2);
+      expect(allSubmissions).to.include(submissionId3);
+    });
+
+    it("getReporter: returns correct reporter address", async () => {
+      const reporter1 = await bb.getReporter(submissionId1);
+      expect(reporter1).to.equal(signers[2].address);
+
+      const reporter2 = await bb.getReporter(submissionId2);
+      expect(reporter2).to.equal(signers[2].address);
+
+      const reporter3 = await bb.getReporter(submissionId3);
+      expect(reporter3).to.equal(signers[3].address);
+    });
+
+    it("getReviewedAt: returns 0 before review, timestamp after review", async () => {
+      // Before review
+      const beforeReview = await bb.getReviewedAt(submissionId1);
+      expect(beforeReview).to.equal(0);
+
+      // Admin reviews report
+      await bb.connect(signers[1]).reviewReport(submissionId1);
+
+      // After review
+      const afterReview = await bb.getReviewedAt(submissionId1);
+      expect(afterReview).to.be.gt(0);
+    });
+
+    it("verifyOwnership: returns true for owner, false for non-owner", async () => {
+      // Reporter 1 owns submissionId1
+      const isOwner1 = await bb
+        .connect(signers[2])
+        .verifyOwnership(submissionId1, "0x");
+      expect(isOwner1).to.be.true;
+
+      // Reporter 2 does NOT own submissionId1
+      const isOwner2 = await bb
+        .connect(signers[3])
+        .verifyOwnership(submissionId1, "0x");
+      expect(isOwner2).to.be.false;
+
+      // Admin does NOT own submissionId1
+      const isOwner3 = await bb
+        .connect(signers[1])
+        .verifyOwnership(submissionId1, "0x");
+      expect(isOwner3).to.be.false;
+    });
+
+    it("getAdminNotes: reporter and admin can access, others cannot", async () => {
+      // Admin reviews and approves with encrypted notes
+      await bb.connect(signers[1]).reviewReport(submissionId1);
+      const testNotes = ethers.hexlify(ethers.toUtf8Bytes("Great work!"));
+      await bb
+        .connect(signers[1])
+        .approveReport(submissionId1, 1000, 2, testNotes);
+
+      // Admin can access notes
+      const adminView = await bb.connect(signers[1]).getAdminNotes(submissionId1);
+      expect(adminView).to.equal(testNotes);
+
+      // Reporter can access notes
+      const reporterView = await bb
+        .connect(signers[2])
+        .getAdminNotes(submissionId1);
+      expect(reporterView).to.equal(testNotes);
+
+      // Other reporter cannot access notes
+      await expect(
+        bb.connect(signers[3]).getAdminNotes(submissionId1),
+      ).to.be.revertedWith("Not authorized");
+
+      // Random user cannot access notes
+      await expect(
+        bb.connect(signers[4]).getAdminNotes(submissionId1),
+      ).to.be.revertedWith("Not authorized");
     });
   });
 });

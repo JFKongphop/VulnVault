@@ -23,7 +23,7 @@ describe("ConfidentialPayouts", function () {
     await hasher.waitForDeployment();
     merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
       libraries: { Hasher: await hasher.getAddress() }
-    })).deploy(20);
+    })).deploy();
     await merkleTree.waitForDeployment();
     await payouts.setMerkleTree(await merkleTree.getAddress());
     await payouts.setVault(vaultAddr);
