@@ -300,6 +300,8 @@ contract MerkleTree {
   mapping(uint256 => bytes32) public filledSubtrees;
   mapping(uint256 => bytes32) public roots;
   mapping(uint256 => bytes32) public leaves;
+  mapping(bytes32 => bool) internal _commitments;
+
   uint32 public constant ROOT_HISTORY_SIZE = 30;
   uint32 public currentRootIndex = 0;
   uint32 public nextIndex = 0;

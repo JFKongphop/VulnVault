@@ -16,4 +16,7 @@ interface IMerkleTree {
 
   /// @notice Return the current Merkle root.
   function getRoot() external view returns (bytes32);
+
+  /// @notice Check if a commitment has been registered (for ZK proof verification).
+  function commitments(bytes32 commitment) external view returns (bool);
 }

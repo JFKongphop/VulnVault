@@ -9,7 +9,7 @@ import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 ///         and access control. Only the authorised BugBountyProgram contract may
 ///         insert leaves; the owner (ProgramRegistry) may authorise addresses.
 ///
-/// Deploy with `levels = 20` for ~1M capacity (2^20 leaves).
+/// Hardcoded to 20 levels (2^20 = ~1M leaves) matching the ZK circuit.
 contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
   address public immutable owner;
   mapping(address => bool) public authorised;
@@ -23,7 +23,7 @@ contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
     _;
   }
 
-  constructor(uint32 levels) MerkleTree(levels) {
+  constructor() MerkleTree(20) {
     owner = msg.sender;
   }
 
@@ -38,11 +38,14 @@ contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
     return bytes32(uint256(value) % _FIELD);
   }
 
-  // ── IMerkleTree ─────────────────────────────────────────────────────────
+  // ── IMerkleTree
+  // ─────────────────────────────────────────────────────────
 
   /// @inheritdoc IMerkleTree
   function insertCommitment(bytes32 commitment) external override onlyAuthorised {
-    _insert(_toField(commitment));
+    bytes32 fieldCommitment = _toField(commitment);
+    _commitments[fieldCommitment] = true;
+    _insert(fieldCommitment);
   }
 
   /// @inheritdoc IMerkleTree
@@ -51,12 +54,12 @@ contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
   }
 
   /// @inheritdoc IMerkleTree
-  function isKnownRoot(bytes32 root)
-    public
-    view
-    override(MerkleTree, IMerkleTree)
-    returns (bool)
-  {
+  function commitments(bytes32 commitment) external view override returns (bool) {
+    return _commitments[commitment];
+  }
+
+  /// @inheritdoc IMerkleTree
+  function isKnownRoot(bytes32 root) public view override(MerkleTree, IMerkleTree) returns (bool) {
     return MerkleTree.isKnownRoot(root);
   }
 
