@@ -82,4 +82,30 @@ interface IBugBountyProgram {
 
   /// @notice List all submission IDs.
   function getAllSubmissionIds() external view returns (bytes32[] memory);
+
+  /// @notice List submission IDs for the caller's reports.
+  function getMySubmissionIds() external view returns (bytes32[] memory);
+
+  /// @notice Get the reporter address for a submission.
+  function getReporter(bytes32 submissionId) external view returns (address);
+
+  /// @notice Get the review timestamp for a submission.
+  function getReviewedAt(bytes32 submissionId) external view returns (uint256);
+
+  /// @notice Get encrypted admin notes (reporter or admin only).
+  function getAdminNotes(bytes32 submissionId) external view returns (bytes memory);
+
+  /// @notice Retrieve own encrypted report data (reporter only).
+  function getMyEncryptedReportData(bytes32 submissionId)
+    external
+    view
+    returns (
+      bytes memory encryptedProtocol,
+      bytes memory encryptedContractAddress,
+      bytes memory encryptedTitle,
+      bytes memory encryptedDescription,
+      bytes memory encryptedPoC,
+      bytes memory encryptedGistLink,
+      bytes memory encryptedAttachments
+    );
 }

@@ -44,6 +44,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
   struct SubmittedReport {
     bytes32 submissionId;
     bytes32 commitment;
+    address reporter;
     uint256 programId;
     uint256 submittedAt;
     uint256 reviewedAt;
@@ -69,6 +70,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
 
   mapping(bytes32 => SubmittedReport) private _submissions;
   bytes32[] private _allSubmissionIds;
+  mapping(address => bytes32[]) private _userSubmissions;
 
   // ── Events
   // ─────────────────────────────────────────────────────────────
@@ -166,6 +168,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
     SubmittedReport storage r = _submissions[submissionId];
     r.submissionId = submissionId;
     r.commitment = commitment;
+    r.reporter = msg.sender;
     r.programId = programId;
     r.submittedAt = block.timestamp;
     r.status = ReportStatus.Pending;
@@ -192,6 +195,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
     FHE.allowThis(r.encryptedBountyAmount);
 
     _allSubmissionIds.push(submissionId);
+    _userSubmissions[msg.sender].push(submissionId);
 
     if (address(merkleTree) != address(0)) {
       merkleTree.insertCommitment(commitment);
@@ -323,7 +327,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
   /// @notice Reporter makes their report's FHE fields publicly decryptable.
   function decryptMyReport(bytes32 submissionId) external {
     SubmittedReport storage r = _submissions[submissionId];
-    // TODO: verify ownership via ZK proof
+    require(r.reporter == msg.sender, "Not report owner");
 
     FHE.makePubliclyDecryptable(r.encryptedImpactType);
     FHE.makePubliclyDecryptable(r.encryptedSeverity);
@@ -405,12 +409,49 @@ contract BugBountyProgram is ZamaEthereumConfig {
     return _allSubmissionIds;
   }
 
+  /// @notice Get submission IDs for the caller's reports
+  /// @return Array of submission IDs owned by msg.sender
+  function getMySubmissionIds() external view returns (bytes32[] memory) {
+    return _userSubmissions[msg.sender];
+  }
+
   function getCommitment(bytes32 submissionId) external view returns (bytes32) {
     return _submissions[submissionId].commitment;
   }
 
-  function verifyOwnership(bytes32 submissionId, bytes calldata) external view returns (bool) {
-    return _submissions[submissionId].submittedAt != 0;
+  /// @notice Get the reporter address for a submission
+  /// @param submissionId The submission ID
+  /// @return The address that submitted the report
+  function getReporter(bytes32 submissionId) external view returns (address) {
+    return _submissions[submissionId].reporter;
+  }
+
+  /// @notice Get the review timestamp for a submission
+  /// @param submissionId The submission ID
+  /// @return The timestamp when admin reviewed the report (0 if not reviewed)
+  function getReviewedAt(bytes32 submissionId) external view returns (uint256) {
+    return _submissions[submissionId].reviewedAt;
+  }
+
+  /// @notice Get encrypted admin notes for a submission (reporter or admin only)
+  /// @param submissionId The submission ID
+  /// @return Encrypted admin notes
+  function getAdminNotes(bytes32 submissionId) external view returns (bytes memory) {
+    SubmittedReport storage r = _submissions[submissionId];
+    require(
+      msg.sender == admin || msg.sender == registryAddr || r.reporter == msg.sender,
+      "Not authorized"
+    );
+    return r.encryptedAdminNotes;
+  }
+
+  /// @notice Verify if caller owns the submission
+  /// @param submissionId The submission ID
+  /// @param ownershipProof Reserved for future ZK proof verification (currently unused)
+  /// @return True if caller is the reporter
+  function verifyOwnership(bytes32 submissionId, bytes calldata ownershipProof) external view returns (bool) {
+    ownershipProof; // Silence unused parameter warning
+    return _submissions[submissionId].reporter == msg.sender;
   }
 
   /// @notice Get encrypted symmetric key for admin to decrypt report data (Option 2)
@@ -418,5 +459,75 @@ contract BugBountyProgram is ZamaEthereumConfig {
   /// @return Symmetric key encrypted with admin's public key
   function getEncryptedSymmetricKey(bytes32 submissionId) external view onlyAdmin returns (bytes memory) {
     return _submissions[submissionId].encryptedSymmetricKey;
+  }
+
+  /// @notice Retrieve all encrypted report data from on-chain storage (admin only)
+  /// @param submissionId The submission ID
+  /// @return encryptedProtocol AES-GCM encrypted protocol name
+  /// @return encryptedContractAddress AES-GCM encrypted contract address
+  /// @return encryptedTitle AES-GCM encrypted report title
+  /// @return encryptedDescription AES-GCM encrypted vulnerability description
+  /// @return encryptedPoC AES-GCM encrypted proof of concept code
+  /// @return encryptedGistLink AES-GCM encrypted gist link
+  /// @return encryptedAttachments AES-GCM encrypted attachments hash
+  function getEncryptedReportData(bytes32 submissionId)
+    external
+    view
+    onlyAdmin
+    returns (
+      bytes memory encryptedProtocol,
+      bytes memory encryptedContractAddress,
+      bytes memory encryptedTitle,
+      bytes memory encryptedDescription,
+      bytes memory encryptedPoC,
+      bytes memory encryptedGistLink,
+      bytes memory encryptedAttachments
+    )
+  {
+    SubmittedReport storage r = _submissions[submissionId];
+    return (
+      r.encryptedProtocol,
+      r.encryptedContractAddress,
+      r.encryptedTitle,
+      r.encryptedDescription,
+      r.encryptedPoC,
+      r.encryptedGistLink,
+      r.encryptedAttachments
+    );
+  }
+
+  /// @notice Retrieve own encrypted report data (reporter only)
+  /// @param submissionId The submission ID
+  /// @return encryptedProtocol AES-GCM encrypted protocol name
+  /// @return encryptedContractAddress AES-GCM encrypted contract address
+  /// @return encryptedTitle AES-GCM encrypted report title
+  /// @return encryptedDescription AES-GCM encrypted vulnerability description
+  /// @return encryptedPoC AES-GCM encrypted proof of concept code
+  /// @return encryptedGistLink AES-GCM encrypted gist link
+  /// @return encryptedAttachments AES-GCM encrypted attachments hash
+  function getMyEncryptedReportData(bytes32 submissionId)
+    external
+    view
+    returns (
+      bytes memory encryptedProtocol,
+      bytes memory encryptedContractAddress,
+      bytes memory encryptedTitle,
+      bytes memory encryptedDescription,
+      bytes memory encryptedPoC,
+      bytes memory encryptedGistLink,
+      bytes memory encryptedAttachments
+    )
+  {
+    SubmittedReport storage r = _submissions[submissionId];
+    require(r.reporter == msg.sender, "Not report owner");
+    return (
+      r.encryptedProtocol,
+      r.encryptedContractAddress,
+      r.encryptedTitle,
+      r.encryptedDescription,
+      r.encryptedPoC,
+      r.encryptedGistLink,
+      r.encryptedAttachments
+    );
   }
 }
