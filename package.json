@@ -26,9 +26,14 @@
   "dependencies": {
     "@fhevm/mock-utils": "^0.4.2",
     "@fhevm/solidity": "^0.11.1",
-    "encrypted-types": "^0.0.4",
     "@openzeppelin/confidential-contracts": "^0.4.0",
-    "@zama-fhe/oracle-solidity": "0.2.0"
+    "@zama-fhe/oracle-solidity": "0.2.0",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "encrypted-types": "^0.0.4",
+    "fixed-merkle-tree": "^0.7.3",
+    "poseidon-lite": "^0.3.0",
+    "snarkjs": "^0.7.6"
   },
   "devDependencies": {
     "@fhevm/hardhat-plugin": "^0.4.2",
