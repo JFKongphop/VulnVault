@@ -2,11 +2,20 @@ import { ethers, fhevm } from "hardhat";
 import { expect } from "chai";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { FhevmType } from "@fhevm/hardhat-plugin";
+import {
+  generateRSAKeyPair,
+  BugReportEncryption,
+  type RSAKeyPair,
+} from "./helpers/encryption";
 
 describe("DisputeResolver", function () {
-  let signers: any, resolver: any, bb: any;
+  let signers: any, resolver: any, bb: any, bbAddr: string;
+  let adminKeys: RSAKeyPair;
 
-  before(async () => { signers = await ethers.getSigners(); });
+  before(async () => {
+    signers = await ethers.getSigners();
+    adminKeys = generateRSAKeyPair();
+  });
 
   beforeEach(async function () {
     if (!fhevm.isMock) this.skip();
@@ -14,16 +23,48 @@ describe("DisputeResolver", function () {
     await resolver.waitForDeployment();
     bb = await (await ethers.getContractFactory("BugBountyProgram")).deploy(signers[1].address, 0);
     await bb.waitForDeployment();
-    await resolver.setBugBountyProgram(await bb.getAddress());
+    bbAddr = await bb.getAddress();
+    await resolver.setBugBountyProgram(bbAddr);
     await bb.setDisputeResolver(await resolver.getAddress());
     await resolver.setProgramArbiters(0, [signers[3].address, signers[4].address, signers[5].address]);
   });
 
   async function submitAndReject(): Promise<string> {
+    const commitment = ethers.keccak256(ethers.randomBytes(32));
+    const inp = fhevm.createEncryptedInput(bbAddr, signers[2].address);
+    inp.add8(1); // impactType = Smart Contract
+    inp.add8(2); // severity = High
+    const { handles, inputProof } = await inp.encrypt();
+
+    // Use production encryption
+    const encryption = new BugReportEncryption();
+    const reportData = {
+      protocol: "Protocol",
+      contractAddress: "0x01",
+      title: "Title",
+      description: "Description",
+      poc: "PoC",
+      gistLink: "",
+      attachments: "",
+    };
+    const encryptedReport = encryption.encryptReport(reportData);
+    const encryptedSymmetricKey = encryption.encryptKeyForAdmin(
+      adminKeys.publicKey,
+    );
+
     const tx = await bb.connect(signers[2]).submitReport(
-      ethers.keccak256(ethers.randomBytes(32)),
-      ethers.toUtf8Bytes("P"), "0x01",
-      ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x",
+      commitment,
+      encryptedReport.encryptedProtocol,
+      encryptedReport.encryptedContractAddress,
+      handles[0],
+      handles[1],
+      inputProof,
+      encryptedReport.encryptedTitle,
+      encryptedReport.encryptedDescription,
+      encryptedReport.encryptedPoC,
+      encryptedReport.encryptedGistLink,
+      encryptedReport.encryptedAttachments,
+      encryptedSymmetricKey,
     );
     const receipt = await tx.wait();
     const ev = receipt?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted");
@@ -35,15 +76,43 @@ describe("DisputeResolver", function () {
 
   it("raises dispute on rejected report", async () => {
     const sid = await submitAndReject();
-    await expect(resolver.connect(signers[2]).raiseDispute(
-      sid, ethers.toUtf8Bytes("Reason"), ethers.toUtf8Bytes("Evidence"), "0x"
-    )).to.emit(resolver, "DisputeRaised");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "Reason",
+      description: "Evidence",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    await expect(
+      resolver.connect(signers[2]).raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      ),
+    ).to.emit(resolver, "DisputeRaised");
   });
 
   it("votes and resolves — FHE tally: 2 ForReporter, 0 ForAdmin", async () => {
     const sid = await submitAndReject();
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
     const tx = await resolver.connect(signers[2]).raiseDispute(
-      sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x"
+      sid,
+      disputeData.encryptedTitle,
+      disputeData.encryptedDescription,
+      "0x",
     );
     const receipt = await tx.wait();
     const ev = receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised");
@@ -74,8 +143,21 @@ describe("DisputeResolver", function () {
 
   it("votes and resolves — FHE tally: 2 ForAdmin, reporter loses", async () => {
     const sid = await submitAndReject();
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
     const tx = await resolver.connect(signers[2]).raiseDispute(
-      sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x"
+      sid,
+      disputeData.encryptedTitle,
+      disputeData.encryptedDescription,
+      "0x",
     );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
@@ -97,7 +179,24 @@ describe("DisputeResolver", function () {
 
   it("reverts non-arbiter vote", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await expect(resolver.connect(signers[2]).submitVote(disputeId, 1, "0x")).to.be.reverted;
@@ -105,7 +204,24 @@ describe("DisputeResolver", function () {
 
   it("reverts double vote", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
@@ -113,21 +229,86 @@ describe("DisputeResolver", function () {
   });
 
   it("reverts dispute on non-rejected report", async () => {
+    const commitment = ethers.keccak256(ethers.randomBytes(32));
+    const inp = fhevm.createEncryptedInput(bbAddr, signers[2].address);
+    inp.add8(1);
+    inp.add8(2);
+    const { handles, inputProof } = await inp.encrypt();
+
+    const encryption = new BugReportEncryption();
+    const reportData = {
+      protocol: "Protocol",
+      contractAddress: "0x01",
+      title: "Title",
+      description: "Description",
+      poc: "PoC",
+      gistLink: "",
+      attachments: "",
+    };
+    const encryptedReport = encryption.encryptReport(reportData);
+    const encryptedSymmetricKey = encryption.encryptKeyForAdmin(
+      adminKeys.publicKey,
+    );
+
     const tx = await bb.connect(signers[2]).submitReport(
-      ethers.keccak256(ethers.randomBytes(32)),
-      ethers.toUtf8Bytes("P"), "0x01",
-      ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x",
+      commitment,
+      encryptedReport.encryptedProtocol,
+      encryptedReport.encryptedContractAddress,
+      handles[0],
+      handles[1],
+      inputProof,
+      encryptedReport.encryptedTitle,
+      encryptedReport.encryptedDescription,
+      encryptedReport.encryptedPoC,
+      encryptedReport.encryptedGistLink,
+      encryptedReport.encryptedAttachments,
+      encryptedSymmetricKey,
     );
     const receipt = await tx.wait();
-    const sid = (receipt?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
-    await expect(resolver.connect(signers[2]).raiseDispute(
-      sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x"
-    )).to.be.reverted;
+    const sid = (
+      receipt?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any
+    ).args[0];
+
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    await expect(
+      resolver.connect(signers[2]).raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      ),
+    ).to.be.reverted;
   });
 
   it("allows resolve after voting deadline", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
@@ -138,7 +319,24 @@ describe("DisputeResolver", function () {
 
   it("executes outcome for reporter win", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
@@ -149,7 +347,24 @@ describe("DisputeResolver", function () {
 
   it("voting deadline blocks late votes", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await time.increase(5 * 24 * 3600 + 1); // past 5-day voting window
@@ -160,7 +375,24 @@ describe("DisputeResolver", function () {
 
   it("unanimous 3-of-3 ForReporter — FHE tally = 3", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x"); // ForReporter
@@ -175,7 +407,24 @@ describe("DisputeResolver", function () {
 
   it("partial 2-of-3 vote: ForReporter=2 after 2 arbiters vote and deadline passes", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x"); // ForReporter
@@ -191,7 +440,24 @@ describe("DisputeResolver", function () {
 
   it("admin wins — executeOutcome emits OutcomeExecuted with reporterWon=false", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 2, "0x"); // ForAdmin
@@ -204,7 +470,24 @@ describe("DisputeResolver", function () {
 
   it("reverts executeOutcome if dispute not yet resolved", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     // Don't resolve — try to execute directly
@@ -213,7 +496,24 @@ describe("DisputeResolver", function () {
 
   it("dispute status transitions: Voting → Resolved → Executed", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(1); // Voting
@@ -227,7 +527,24 @@ describe("DisputeResolver", function () {
 
   it("getDisputeOutcome returns non-zero handles after resolve", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
@@ -242,23 +559,88 @@ describe("DisputeResolver", function () {
 
   it("reverts raising duplicate dispute on same submission", async () => {
     const sid = await submitAndReject();
-    await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     // After first raise, status = Disputed (not Rejected) → second raise reverts
+    const disputeData2 = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R2",
+      description: "E2",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
     await expect(
-      resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R2"), ethers.toUtf8Bytes("E2"), "0x")
+      resolver.connect(signers[2]).raiseDispute(
+        sid,
+        disputeData2.encryptedTitle,
+        disputeData2.encryptedDescription,
+        "0x",
+      ),
     ).to.be.revertedWith("Report not rejected");
   });
 
   it("markDisputed: submission status becomes Disputed (4) after raiseDispute", async () => {
     const sid = await submitAndReject();
     expect((await bb.getSubmissionMeta(sid))[1]).to.equal(3n); // Rejected
-    await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     expect((await bb.getSubmissionMeta(sid))[1]).to.equal(4n); // Disputed
   });
 
   it("reverts resolveDispute if already resolved", async () => {
     const sid = await submitAndReject();
-    const tx = await resolver.connect(signers[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");

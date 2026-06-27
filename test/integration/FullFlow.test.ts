@@ -2,11 +2,72 @@ import { ethers, fhevm } from "hardhat";
 import { expect } from "chai";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { FhevmType } from "@fhevm/hardhat-plugin";
+import {
+  generateRSAKeyPair,
+  BugReportEncryption,
+  type RSAKeyPair,
+} from "../helpers/encryption";
 const D6 = 1_000_000n;
+
+// Shared FHE submit helper — encrypts impactType=1(SmartContract), severity=2(High)
+async function fheSubmit(
+  bb: any,
+  bbAddr: string,
+  signer: any,
+  commitment: string,
+  adminKeys: RSAKeyPair,
+  protocol = "P",
+  contractAddr = "0x01",
+): Promise<string> {
+  const inp = fhevm.createEncryptedInput(bbAddr, signer.address);
+  inp.add8(1); // impactType
+  inp.add8(2); // severity = High
+  const { handles, inputProof } = await inp.encrypt();
+
+  // Use production encryption
+  const encryption = new BugReportEncryption();
+  const reportData = {
+    protocol,
+    contractAddress: contractAddr,
+    title: "Title",
+    description: "Description",
+    poc: "PoC",
+    gistLink: "",
+    attachments: "",
+  };
+  const encryptedReport = encryption.encryptReport(reportData);
+  const encryptedSymmetricKey = encryption.encryptKeyForAdmin(
+    adminKeys.publicKey,
+  );
+
+  const tx = await bb.connect(signer).submitReport(
+    commitment,
+    encryptedReport.encryptedProtocol,
+    encryptedReport.encryptedContractAddress,
+    handles[0],
+    handles[1],
+    inputProof,
+    encryptedReport.encryptedTitle,
+    encryptedReport.encryptedDescription,
+    encryptedReport.encryptedPoC,
+    encryptedReport.encryptedGistLink,
+    encryptedReport.encryptedAttachments,
+    encryptedSymmetricKey,
+  );
+  return (
+    (await tx.wait())?.logs.find(
+      (l: any) => l.fragment?.name === "ReportSubmitted",
+    ) as any
+  ).args[0];
+}
 
 describe("FullFlow Integration", function () {
   let s: any;
-  before(async () => { s = await ethers.getSigners(); });
+  let adminKeys: RSAKeyPair;
+  before(async () => {
+    s = await ethers.getSigners();
+    adminKeys = generateRSAKeyPair();
+  });
 
   it("create → submit → review → vault-lock → withdraw → dispute", async function () {
     if (!fhevm.isMock) this.skip();
@@ -19,7 +80,7 @@ describe("FullFlow Integration", function () {
     const hasher = await (await ethers.getContractFactory("Hasher")).deploy(); await hasher.waitForDeployment();
     const merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
       libraries: { Hasher: await hasher.getAddress() }
-    })).deploy(20); await merkleTree.waitForDeployment();
+    })).deploy(); await merkleTree.waitForDeployment();
 
     await bb.setVault(await vault.getAddress());
     await bb.setMerkleTree(await merkleTree.getAddress());
@@ -38,12 +99,14 @@ describe("FullFlow Integration", function () {
     await vault.connect(s[1]).deposit(0, 50_000n * D6);
 
     // Submit
-    const tx = await bb.connect(s[2]).submitReport(
+    const bbAddr = await bb.getAddress();
+    const sid = await fheSubmit(
+      bb,
+      bbAddr,
+      s[2],
       ethers.keccak256(ethers.randomBytes(32)),
-      ethers.toUtf8Bytes("P"), "0x01",
-      ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x",
+      adminKeys,
     );
-    const sid = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
     expect((await bb.getSubmissionMeta(sid))[1]).to.equal(0);
 
     // Review
@@ -61,16 +124,40 @@ describe("FullFlow Integration", function () {
     expect(await cUSDT.balanceOf(s[4].address)).to.equal(balBefore + bounty);
 
     // Dispute
-    const tx2 = await bb.connect(s[2]).submitReport(
+    const sid2 = await fheSubmit(
+      bb,
+      bbAddr,
+      s[2],
       ethers.keccak256(ethers.randomBytes(32)),
-      ethers.toUtf8Bytes("P2"), "0x02",
-      ethers.toUtf8Bytes("T2"), ethers.toUtf8Bytes("D2"), ethers.toUtf8Bytes("P2"), "0x", "0x",
+      adminKeys,
+      "P2",
+      "0x02",
     );
-    const sid2 = ((await tx2.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
     await bb.connect(s[1]).reviewReport(sid2);
     await bb.connect(s[1]).rejectReport(sid2, "0x");
 
-    const dEv = ((await (await resolver.connect(s[2]).raiseDispute(sid2, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x")).wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any);
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const dTx = await resolver
+      .connect(s[2])
+      .raiseDispute(
+        sid2,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
+    const dReceipt = await dTx.wait();
+    const dEv = dReceipt?.logs.find(
+      (l: any) => l.fragment?.name === "DisputeRaised",
+    ) as any;
     const disputeId = dEv.args[0];
     await resolver.connect(s[3]).submitVote(disputeId, 1, "0x");
     await resolver.connect(s[4]).submitVote(disputeId, 1, "0x");
@@ -97,7 +184,7 @@ describe("FullFlow Integration", function () {
       const hasher = await (await ethers.getContractFactory("Hasher")).deploy(); await hasher.waitForDeployment();
       merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
         libraries: { Hasher: await hasher.getAddress() }
-      })).deploy(20); await merkleTree.waitForDeployment();
+      })).deploy(); await merkleTree.waitForDeployment();
       resolver = await (await ethers.getContractFactory("DisputeResolver")).deploy(); await resolver.waitForDeployment();
       reputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy(); await reputation.waitForDeployment();
       reputationAddr = await reputation.getAddress();
@@ -122,8 +209,7 @@ describe("FullFlow Integration", function () {
     });
 
     it("vault available decreases and locked increases after approve", async () => {
-      const tx = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
       await bb.connect(s[1]).reviewReport(sid);
       const bounty = 5_000n * D6;
       await bb.connect(s[1]).approveReport(sid, bounty, 2, "0x");
@@ -132,8 +218,7 @@ describe("FullFlow Integration", function () {
     });
 
     it("anti-rug: admin cannot initiate withdrawal exceeding available balance", async () => {
-      const tx = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
       await bb.connect(s[1]).reviewReport(sid);
       const bounty = 30_000n * D6;
       await bb.connect(s[1]).approveReport(sid, bounty, 2, "0x");
@@ -144,8 +229,7 @@ describe("FullFlow Integration", function () {
     });
 
     it("merkle nextIndex: 1 after submit, 2 after approve", async () => {
-      const tx = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
       expect(await merkleTree.nextIndex()).to.equal(1);
       await bb.connect(s[1]).reviewReport(sid);
       await bb.connect(s[1]).approveReport(sid, 1_000n * D6, 2, "0x");
@@ -157,29 +241,51 @@ describe("FullFlow Integration", function () {
       input.add8(1); // impactType
       input.add8(3); // severity = Critical
       const { handles, inputProof } = await input.encrypt();
+
+      const encryption = new BugReportEncryption();
+      const reportData = {
+        protocol: "Protocol",
+        contractAddress: "0xABC",
+        title: "Title",
+        description: "Description",
+        poc: "PoC",
+        gistLink: "",
+        attachments: "",
+      };
+      const encryptedReport = encryption.encryptReport(reportData);
+      const encryptedSymmetricKey = encryption.encryptKeyForAdmin(
+        adminKeys.publicKey,
+      );
+
       await expect(
-        bb.connect(s[2]).submitReportWithFHE(
-          commitment, ethers.toUtf8Bytes("P"), ethers.toUtf8Bytes("0xABC"),
-          handles[0], handles[1], inputProof,
-          ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x",
-        )
+        bb.connect(s[2]).submitReport(
+          commitment,
+          encryptedReport.encryptedProtocol,
+          encryptedReport.encryptedContractAddress,
+          handles[0],
+          handles[1],
+          inputProof,
+          encryptedReport.encryptedTitle,
+          encryptedReport.encryptedDescription,
+          encryptedReport.encryptedPoC,
+          encryptedReport.encryptedGistLink,
+          encryptedReport.encryptedAttachments,
+          encryptedSymmetricKey,
+        ),
       ).to.emit(bb, "CriticalReportFlagged");
     });
 
     it("multiple reports: independent IDs and both Pending", async () => {
       const c2 = "0xbbbbccccddddeeee0000111122223333444455556666777788889999aaaabbbb";
-      const tx1 = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const tx2 = await bb.connect(s[2]).submitReport(c2, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid1 = ((await tx1.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
-      const sid2 = ((await tx2.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid1 = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
+      const sid2 = await fheSubmit(bb, bbAddr, s[2], c2, adminKeys);
       expect(sid1).to.not.equal(sid2);
       expect((await bb.getSubmissionMeta(sid1))[1]).to.equal(0n);
       expect((await bb.getSubmissionMeta(sid2))[1]).to.equal(0n);
     });
 
     it("reputation: Critical=100 score after approve — FHE user decrypt", async () => {
-      const tx = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
       await bb.connect(s[1]).reviewReport(sid);
       await bb.connect(s[1]).approveReport(sid, 5_000n * D6, 3, "0x"); // severity=3 Critical
       // Allow score decrypt (caller = commitment owner, but for test use s[0] which is reputation.bugBountyProgram)
@@ -208,7 +314,7 @@ describe("FullFlow Integration", function () {
       const hasher = await (await ethers.getContractFactory("Hasher")).deploy(); await hasher.waitForDeployment();
       merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
         libraries: { Hasher: await hasher.getAddress() }
-      })).deploy(20); await merkleTree.waitForDeployment();
+      })).deploy(); await merkleTree.waitForDeployment();
       resolver = await (await ethers.getContractFactory("DisputeResolver")).deploy(); await resolver.waitForDeployment();
       resolverAddr = await resolver.getAddress();
 
@@ -228,8 +334,7 @@ describe("FullFlow Integration", function () {
     });
 
     async function submitAndReject(): Promise<string> {
-      const tx = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
       await bb.connect(s[1]).reviewReport(sid);
       await bb.connect(s[1]).rejectReport(sid, "0x");
       return sid;
@@ -237,7 +342,24 @@ describe("FullFlow Integration", function () {
 
     it("reporter wins dispute: overrideApprove → status Approved (2)", async () => {
       const sid = await submitAndReject();
-      const tx = await resolver.connect(s[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+      const disputeEncryption = new BugReportEncryption();
+      const disputeData = disputeEncryption.encryptReport({
+        protocol: "",
+        contractAddress: "",
+        title: "R",
+        description: "E",
+        poc: "",
+        gistLink: "",
+        attachments: "",
+      });
+      const tx = await resolver
+        .connect(s[2])
+        .raiseDispute(
+          sid,
+          disputeData.encryptedTitle,
+          disputeData.encryptedDescription,
+          "0x",
+        );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
       await resolver.connect(s[3]).submitVote(disputeId, 1, "0x"); // ForReporter
       await resolver.connect(s[4]).submitVote(disputeId, 1, "0x"); // ForReporter
@@ -248,7 +370,24 @@ describe("FullFlow Integration", function () {
 
     it("admin wins dispute: unfreezeReport → report not frozen", async () => {
       const sid = await submitAndReject();
-      const tx = await resolver.connect(s[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+      const disputeEncryption = new BugReportEncryption();
+      const disputeData = disputeEncryption.encryptReport({
+        protocol: "",
+        contractAddress: "",
+        title: "R",
+        description: "E",
+        poc: "",
+        gistLink: "",
+        attachments: "",
+      });
+      const tx = await resolver
+        .connect(s[2])
+        .raiseDispute(
+          sid,
+          disputeData.encryptedTitle,
+          disputeData.encryptedDescription,
+          "0x",
+        );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
       await resolver.connect(s[3]).submitVote(disputeId, 2, "0x"); // ForAdmin
       await resolver.connect(s[4]).submitVote(disputeId, 2, "0x"); // ForAdmin
@@ -260,7 +399,24 @@ describe("FullFlow Integration", function () {
 
     it("OutcomeExecuted event: reporterWon=true when reporter wins", async () => {
       const sid = await submitAndReject();
-      const tx = await resolver.connect(s[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+      const disputeEncryption = new BugReportEncryption();
+      const disputeData = disputeEncryption.encryptReport({
+        protocol: "",
+        contractAddress: "",
+        title: "R",
+        description: "E",
+        poc: "",
+        gistLink: "",
+        attachments: "",
+      });
+      const tx = await resolver
+        .connect(s[2])
+        .raiseDispute(
+          sid,
+          disputeData.encryptedTitle,
+          disputeData.encryptedDescription,
+          "0x",
+        );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
       await resolver.connect(s[3]).submitVote(disputeId, 1, "0x");
       await resolver.connect(s[4]).submitVote(disputeId, 1, "0x");
@@ -271,7 +427,24 @@ describe("FullFlow Integration", function () {
 
     it("dispute status transitions: Voting → Resolved → Executed", async () => {
       const sid = await submitAndReject();
-      const tx = await resolver.connect(s[2]).raiseDispute(sid, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
+      const disputeEncryption = new BugReportEncryption();
+      const disputeData = disputeEncryption.encryptReport({
+        protocol: "",
+        contractAddress: "",
+        title: "R",
+        description: "E",
+        poc: "",
+        gistLink: "",
+        attachments: "",
+      });
+      const tx = await resolver
+        .connect(s[2])
+        .raiseDispute(
+          sid,
+          disputeData.encryptedTitle,
+          disputeData.encryptedDescription,
+          "0x",
+        );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
       expect(await resolver.getDisputeStatus(disputeId)).to.equal(1); // Voting
       await resolver.connect(s[3]).submitVote(disputeId, 1, "0x");
@@ -284,21 +457,39 @@ describe("FullFlow Integration", function () {
 
     it("locked funds remain after a different dispute admin win (vault guarded)", async () => {
       // Approve first report → locks funds
-      const tx0 = await bb.connect(s[2]).submitReport(commitment, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid0 = ((await tx0.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid0 = await fheSubmit(bb, bbAddr, s[2], commitment, adminKeys);
       await bb.connect(s[1]).reviewReport(sid0);
       const bounty = 10_000n * D6;
       await bb.connect(s[1]).approveReport(sid0, bounty, 2, "0x");
       expect(await vault.getLockedBalance(PID)).to.equal(bounty);
 
-      // Second report: submit → reject → dispute → admin wins
       const c2 = "0xbbbbccccddddeeee0000111122223333444455556666777788889999aaaabbbb";
-      const tx2 = await bb.connect(s[2]).submitReport(c2, ethers.toUtf8Bytes("P"), "0x01", ethers.toUtf8Bytes("T"), ethers.toUtf8Bytes("D"), ethers.toUtf8Bytes("P"), "0x", "0x");
-      const sid2 = ((await tx2.wait())?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any).args[0];
+      const sid2 = await fheSubmit(bb, bbAddr, s[2], c2, adminKeys);
       await bb.connect(s[1]).reviewReport(sid2);
       await bb.connect(s[1]).rejectReport(sid2, "0x");
-      const tx3 = await resolver.connect(s[2]).raiseDispute(sid2, ethers.toUtf8Bytes("R"), ethers.toUtf8Bytes("E"), "0x");
-      const disputeId = ((await tx3.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
+      const disputeEncryption = new BugReportEncryption();
+      const disputeData = disputeEncryption.encryptReport({
+        protocol: "",
+        contractAddress: "",
+        title: "R",
+        description: "E",
+        poc: "",
+        gistLink: "",
+        attachments: "",
+      });
+      const tx3 = await resolver
+        .connect(s[2])
+        .raiseDispute(
+          sid2,
+          disputeData.encryptedTitle,
+          disputeData.encryptedDescription,
+          "0x",
+        );
+      const disputeId = (
+        (await tx3.wait())?.logs.find(
+          (l: any) => l.fragment?.name === "DisputeRaised",
+        ) as any
+      ).args[0];
       await resolver.connect(s[3]).submitVote(disputeId, 2, "0x");
       await resolver.connect(s[4]).submitVote(disputeId, 2, "0x");
       await resolver.resolveDispute(disputeId);
