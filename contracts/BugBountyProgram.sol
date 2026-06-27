@@ -7,6 +7,14 @@ import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
 import {IProgramRegistry} from "./interfaces/IProgramRegistry.sol";
 
+interface IWhitehatReputation {
+  function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external;
+}
+
+interface IDisputeResolver {
+  function onReportRejected(bytes32 submissionId, uint256 programId) external;
+}
+
 /// @title BugBountyProgram — Core FHE-encrypted bug report storage
 /// @notice All sensitive report fields are stored FHE-encrypted. Decryption
 ///         is async via FHE.makePubliclyDecryptable() + oracle. The public
@@ -29,6 +37,9 @@ contract BugBountyProgram is ZamaEthereumConfig {
   address public disputeResolver;
   IBountyVault public vault;
   IProgramRegistry public registry;
+  
+  // ── Option 2: Client-Side Encryption Support
+  bytes public adminPublicKey;  // Admin's RSA public key for encrypting symmetric keys
 
   struct SubmittedReport {
     bytes32 submissionId;
@@ -51,10 +62,29 @@ contract BugBountyProgram is ZamaEthereumConfig {
     bytes encryptedAttachments;
     euint64 encryptedBountyAmount;
     bytes encryptedAdminNotes;
+    
+    // Option 2: Symmetric key encrypted with admin's public key
+    bytes encryptedSymmetricKey;
   }
 
   mapping(bytes32 => SubmittedReport) private _submissions;
   bytes32[] private _allSubmissionIds;
+
+  // ── Events
+  // ─────────────────────────────────────────────────────────────
+
+  event ReportSubmitted(bytes32 indexed submissionId, uint256 timestamp);
+  event CriticalReportFlagged(bytes32 indexed submissionId, bytes32 isCriticalHandle);
+  event ReportDisputed(bytes32 indexed submissionId);
+  event ReportUnderReview(bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle);
+  event ReportDecrypted(
+    bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle, bytes32 bountyHandle
+  );
+  event ReportApproved(bytes32 indexed submissionId, uint256 bountyAmount);
+  event ReportRejected(bytes32 indexed submissionId);
+  event ReportFrozen(bytes32 indexed submissionId);
+  event ReportUnfrozen(bytes32 indexed submissionId);
+  event AdminPublicKeySet(bytes publicKey);
 
   modifier onlyAdmin() {
     require(msg.sender == admin || msg.sender == registryAddr, "Not admin");
@@ -103,67 +133,18 @@ contract BugBountyProgram is ZamaEthereumConfig {
     registryAddr = addr;
   }
 
-  // ── Submit Report
-  // ──────────────────────────────────────────────────────
-
-  function submitReport(
-    bytes32 commitment,
-    bytes calldata encryptedProtocol,
-    bytes calldata encryptedContractAddress,
-    bytes calldata encryptedTitle,
-    bytes calldata encryptedDescription,
-    bytes calldata encryptedPoC,
-    bytes calldata encryptedGistLink,
-    bytes calldata encryptedAttachments
-  )
-    external
-    returns (bytes32 submissionId)
-  {
-    submissionId = keccak256(abi.encode(commitment, block.timestamp, msg.sender));
-
-    SubmittedReport storage r = _submissions[submissionId];
-    r.submissionId = submissionId;
-    r.commitment = commitment;
-    r.programId = programId;
-    r.submittedAt = block.timestamp;
-    r.status = ReportStatus.Pending;
-    r.autoEscalated = false;
-    r.frozen = false;
-
-    r.encryptedProtocol = encryptedProtocol;
-    r.encryptedContractAddress = encryptedContractAddress;
-    r.encryptedTitle = encryptedTitle;
-    r.encryptedDescription = encryptedDescription;
-    r.encryptedPoC = encryptedPoC;
-    r.encryptedGistLink = encryptedGistLink;
-    r.encryptedAttachments = encryptedAttachments;
-
-    // FHE numeric defaults (zero — admin sets real values later)
-    r.encryptedImpactType = FHE.asEuint8(0);
-    r.encryptedSeverity = FHE.asEuint8(0);
-    r.encryptedBountyAmount = FHE.asEuint64(uint64(0));
-
-    FHE.allowThis(r.encryptedImpactType);
-    FHE.allowThis(r.encryptedSeverity);
-    FHE.allowThis(r.encryptedBountyAmount);
-
-    _allSubmissionIds.push(submissionId);
-
-    if (address(merkleTree) != address(0)) {
-      merkleTree.insertCommitment(commitment);
-    }
-
-    if (address(registry) != address(0)) {
-      registry.incrementSubmissionCount(programId);
-    }
-
-    emit ReportSubmitted(submissionId, block.timestamp);
+  /// @notice Set admin's public key for client-side encryption (Option 2)
+  /// @param pubkey RSA public key in DER format (SPKI)
+  function setAdminPublicKey(bytes calldata pubkey) external onlyAdmin {
+    require(pubkey.length > 0, "Empty public key");
+    adminPublicKey = pubkey;
+    emit AdminPublicKeySet(pubkey);
   }
 
-  // ── Submit with FHE Inputs (enables auto-escalate)
+  // ── Submit Report with FHE Inputs (enables auto-escalate)
   // ─────────────────────
 
-  function submitReportWithFHE(
+  function submitReport(
     bytes32 commitment,
     bytes calldata encryptedProtocol,
     bytes calldata encryptedContractAddress,
@@ -174,7 +155,8 @@ contract BugBountyProgram is ZamaEthereumConfig {
     bytes calldata encryptedDescription,
     bytes calldata encryptedPoC,
     bytes calldata encryptedGistLink,
-    bytes calldata encryptedAttachments
+    bytes calldata encryptedAttachments,
+    bytes calldata encryptedSymmetricKey
   )
     external
     returns (bytes32 submissionId)
@@ -197,6 +179,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
     r.encryptedPoC = encryptedPoC;
     r.encryptedGistLink = encryptedGistLink;
     r.encryptedAttachments = encryptedAttachments;
+    r.encryptedSymmetricKey = encryptedSymmetricKey;
 
     r.encryptedImpactType = FHE.fromExternal(inImpactType, inputProof);
     r.encryptedSeverity = FHE.fromExternal(inSeverity, inputProof);
@@ -430,26 +413,10 @@ contract BugBountyProgram is ZamaEthereumConfig {
     return _submissions[submissionId].submittedAt != 0;
   }
 
-  // ── Events
-  // ─────────────────────────────────────────────────────────────
-
-  event ReportSubmitted(bytes32 indexed submissionId, uint256 timestamp);
-  event CriticalReportFlagged(bytes32 indexed submissionId, bytes32 isCriticalHandle);
-  event ReportDisputed(bytes32 indexed submissionId);
-  event ReportUnderReview(bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle);
-  event ReportDecrypted(
-    bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle, bytes32 bountyHandle
-  );
-  event ReportApproved(bytes32 indexed submissionId, uint256 bountyAmount);
-  event ReportRejected(bytes32 indexed submissionId);
-  event ReportFrozen(bytes32 indexed submissionId);
-  event ReportUnfrozen(bytes32 indexed submissionId);
-}
-
-interface IWhitehatReputation {
-  function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external;
-}
-
-interface IDisputeResolver {
-  function onReportRejected(bytes32 submissionId, uint256 programId) external;
+  /// @notice Get encrypted symmetric key for admin to decrypt report data (Option 2)
+  /// @param submissionId The submission ID
+  /// @return Symmetric key encrypted with admin's public key
+  function getEncryptedSymmetricKey(bytes32 submissionId) external view onlyAdmin returns (bytes memory) {
+    return _submissions[submissionId].encryptedSymmetricKey;
+  }
 }
