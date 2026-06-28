@@ -7,8 +7,8 @@ import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
 import {IProgramRegistry} from "./interfaces/IProgramRegistry.sol";
 import {IBugBountyProgram} from "./interfaces/IBugBountyProgram.sol";
-import { IWhitehatReputation } from "./interfaces/IWhitehatReputation.sol";
-import { IDisputeResolver } from "./interfaces/IDisputeResolver.sol";
+import {IWhitehatReputation} from "./interfaces/IWhitehatReputation.sol";
+import {IDisputeResolver} from "./interfaces/IDisputeResolver.sol";
 
 /// @title BugBountyProgram — Core FHE-encrypted bug report storage
 /// @notice All sensitive report fields are stored FHE-encrypted. Decryption
