@@ -7,14 +7,8 @@ import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
 import {IProgramRegistry} from "./interfaces/IProgramRegistry.sol";
 import {IBugBountyProgram} from "./interfaces/IBugBountyProgram.sol";
-
-interface IWhitehatReputation {
-  function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external;
-}
-
-interface IDisputeResolver {
-  function onReportRejected(bytes32 submissionId, uint256 programId) external;
-}
+import { IWhitehatReputation } from "./interfaces/IWhitehatReputation.sol";
+import { IDisputeResolver } from "./interfaces/IDisputeResolver.sol";
 
 /// @title BugBountyProgram — Core FHE-encrypted bug report storage
 /// @notice All sensitive report fields are stored FHE-encrypted. Decryption
