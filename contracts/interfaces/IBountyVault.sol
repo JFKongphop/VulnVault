@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {euint64} from "@fhevm/solidity/lib/FHE.sol";
+
 /// @title IBountyVault — Timelocked fund custody interface
 /// @notice Holds cUSDT, locks funds on approval, releases via ZK withdrawal.
 interface IBountyVault {
@@ -27,11 +29,11 @@ interface IBountyVault {
   /// @notice Admin cancels a pending withdrawal.
   function cancelWithdrawal(uint256 programId) external;
 
-  function getAvailableBalance(uint256 programId) external view returns (uint256);
+  function getAvailableBalance(uint256 programId) external view returns (euint64);
 
-  function getLockedBalance(uint256 programId) external view returns (uint256);
+  function getLockedBalance(uint256 programId) external view returns (euint64);
 
-  function getPendingWithdrawal(uint256 programId) external view returns (uint256 amount, uint256 readyAt);
+  function getPendingWithdrawal(uint256 programId) external view returns (euint64 amount, uint256 readyAt);
 
-  function getLockedForReport(bytes32 submissionId) external view returns (uint256);
+  function getLockedForReport(bytes32 submissionId) external view returns (euint64);
 }
