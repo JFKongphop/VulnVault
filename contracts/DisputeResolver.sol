@@ -87,6 +87,12 @@ contract DisputeResolver is ZamaEthereumConfig {
     _;
   }
 
+  modifier onlyProgramAdmin(uint256 disputeId) {
+    address admin = IBugBountyProgram(bugBountyProgram).admin();
+    require(msg.sender == admin, "Only program admin");
+    _;
+  }
+
   function setBugBountyProgram(address addr) external {
     require(bugBountyProgram == address(0), "Already set");
     bugBountyProgram = addr;
@@ -186,17 +192,37 @@ contract DisputeResolver is ZamaEthereumConfig {
     emit DisputeResolved(disputeId, euint8.unwrap(forReporter), euint8.unwrap(forAdmin), ebool.unwrap(reporterWonEnc));
   }
 
-  function executeOutcome(uint256 disputeId, uint256 bountyAmount, uint8 severity) external {
+  /// @notice Execute dispute outcome based on vote result.
+  ///         Admin must check off-chain decrypted vote result before calling.
+  ///         If vote favors reporter: bountyAmount MUST be > 0
+  ///         If vote favors admin: bountyAmount MUST be 0
+  /// @param disputeId The dispute ID
+  /// @param reporterWon The decrypted vote result (true = reporter won, false = admin won)
+  /// @param bountyAmount Bounty to pay if reporter won (must be > 0 if reporterWon)
+  /// @param severity Severity level if reporter won
+  function executeOutcome(
+    uint256 disputeId, 
+    bool reporterWon,
+    uint256 bountyAmount, 
+    uint8 severity
+  ) external onlyProgramAdmin(disputeId) {
     Dispute storage d = _disputes[disputeId];
     require(d.status == DisputeStatus.Resolved, "Not yet resolved");
 
-    if (bountyAmount > 0) {
+    if (reporterWon) {
+      // Vote result: Reporter wins → Admin MUST approve with bounty
+      require(bountyAmount > 0, "Bounty required if reporter won");
+      require(severity > 0, "Severity required if reporter won");
+      
       IBugBountyProgram(bugBountyProgram).overrideApprove(d.submissionId, bountyAmount, severity);
       if (reputation != address(0)) {
         IWhitehatReputation(reputation).incrementScore(d.reporterCommitment, 2, 0);
       }
       emit OutcomeExecuted(disputeId, true);
     } else {
+      // Vote result: Admin wins → No payment allowed
+      require(bountyAmount == 0, "Cannot pay bounty if admin won");
+      
       IBugBountyProgram(bugBountyProgram).unfreezeReport(d.submissionId);
       if (address(vault) != address(0)) {
         vault.unlockFunds(d.programId, d.submissionId);
