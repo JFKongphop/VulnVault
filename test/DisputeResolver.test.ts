@@ -763,5 +763,218 @@ describe("DisputeResolver", function () {
     await resolver.resolveDispute(disputeId);
     await expect(resolver.resolveDispute(disputeId)).to.be.revertedWith("Already resolved");
   });
+
+  // ── UX View Functions Tests
+  // ─────────────────────────────────────────────────────────────
+
+  it("getDisputeInfo returns complete dispute details", async () => {
+    const sid = await submitAndReject();
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "Dispute Reason",
+      description: "Evidence Details",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
+    const receipt = await tx.wait();
+    const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
+    
+    const [submissionId, programId, raisedAt, votingDeadline, status, arbiters] = await resolver.getDisputeInfo(disputeId);
+    
+    expect(submissionId).to.equal(sid);
+    expect(programId).to.equal(0);
+    expect(raisedAt).to.be.greaterThan(0);
+    expect(votingDeadline).to.equal(raisedAt + (5n * 24n * 60n * 60n)); // VOTING_PERIOD = 5 days
+    expect(status).to.equal(1); // Voting
+    expect(arbiters).to.have.lengthOf(3);
+    expect(arbiters[0]).to.equal(signers[3].address);
+    expect(arbiters[1]).to.equal(signers[4].address);
+    expect(arbiters[2]).to.equal(signers[5].address);
+  });
+
+  it("hasArbiterVoted returns false before vote, true after", async () => {
+    const sid = await submitAndReject();
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
+    const receipt = await tx.wait();
+    const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
+    
+    // Before voting
+    expect(await resolver.hasArbiterVoted(disputeId, signers[3].address)).to.be.false;
+    
+    // Submit vote
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    // After voting
+    expect(await resolver.hasArbiterVoted(disputeId, signers[3].address)).to.be.true;
+    expect(await resolver.hasArbiterVoted(disputeId, signers[4].address)).to.be.false;
+  });
+
+  it("getDisputeEvidence returns encrypted reason and evidence", async () => {
+    const sid = await submitAndReject();
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "Dispute Reason",
+      description: "Evidence Details",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
+    const receipt = await tx.wait();
+    const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
+    
+    const [encryptedReason, encryptedEvidence] = await resolver.getDisputeEvidence(disputeId);
+    
+    expect(encryptedReason).to.not.equal("0x");
+    expect(encryptedEvidence).to.not.equal("0x");
+    expect(encryptedReason.length).to.be.greaterThan(0);
+    expect(encryptedEvidence.length).to.be.greaterThan(0);
+  });
+
+  it("getVoteCount returns correct count: 0 before votes, increases with each vote", async () => {
+    const sid = await submitAndReject();
+    const disputeEncryption = new BugReportEncryption();
+    const disputeData = disputeEncryption.encryptReport({
+      protocol: "",
+      contractAddress: "",
+      title: "R",
+      description: "E",
+      poc: "",
+      gistLink: "",
+      attachments: "",
+    });
+    const tx = await resolver
+      .connect(signers[2])
+      .raiseDispute(
+        sid,
+        disputeData.encryptedTitle,
+        disputeData.encryptedDescription,
+        "0x",
+      );
+    const receipt = await tx.wait();
+    const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
+    
+    // Before any votes
+    expect(await resolver.getVoteCount(disputeId)).to.equal(0);
+    
+    const resolverAddr = await resolver.getAddress();
+    
+    // First vote
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    expect(await resolver.getVoteCount(disputeId)).to.equal(1);
+    
+    // Second vote
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(2); // ForAdmin
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    expect(await resolver.getVoteCount(disputeId)).to.equal(2);
+    
+    // Third vote
+    const inp5 = fhevm.createEncryptedInput(resolverAddr, signers[5].address);
+    inp5.add8(1); // ForReporter
+    const { handles: handles5, inputProof: inputProof5 } = await inp5.encrypt();
+    await resolver.connect(signers[5]).submitVote(disputeId, handles5[0], inputProof5);
+    expect(await resolver.getVoteCount(disputeId)).to.equal(3);
+  });
+
+  // ── Setup Events Tests
+  // ─────────────────────────────────────────────────────────────
+
+  it("emits BugBountyProgramSet event when setting program", async () => {
+    const newResolver = await (await ethers.getContractFactory("DisputeResolver")).deploy();
+    await newResolver.waitForDeployment();
+    
+    await expect(newResolver.setBugBountyProgram(bbAddr))
+      .to.emit(newResolver, "BugBountyProgramSet")
+      .withArgs(bbAddr);
+  });
+
+  it("emits VaultSet event when setting vault", async () => {
+    const mockToken = await (await ethers.getContractFactory("MockERC20")).deploy();
+    await mockToken.waitForDeployment();
+    const mockVault = await (await ethers.getContractFactory("BountyVault")).deploy(
+      await mockToken.getAddress(),
+      signers[1].address,
+      0
+    );
+    await mockVault.waitForDeployment();
+    const vaultAddr = await mockVault.getAddress();
+    
+    const newResolver = await (await ethers.getContractFactory("DisputeResolver")).deploy();
+    await newResolver.waitForDeployment();
+    
+    await expect(newResolver.setVault(vaultAddr))
+      .to.emit(newResolver, "VaultSet")
+      .withArgs(vaultAddr);
+  });
+
+  it("emits ReputationSet event when setting reputation", async () => {
+    const mockReputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy();
+    await mockReputation.waitForDeployment();
+    const reputationAddr = await mockReputation.getAddress();
+    
+    const newResolver = await (await ethers.getContractFactory("DisputeResolver")).deploy();
+    await newResolver.waitForDeployment();
+    
+    await expect(newResolver.setReputation(reputationAddr))
+      .to.emit(newResolver, "ReputationSet")
+      .withArgs(reputationAddr);
+  });
+
+  it("emits ArbitersSet event when setting arbiters", async () => {
+    const newResolver = await (await ethers.getContractFactory("DisputeResolver")).deploy();
+    await newResolver.waitForDeployment();
+    
+    const arbiterAddresses = [signers[3].address, signers[4].address, signers[5].address];
+    
+    await expect(newResolver.setProgramArbiters(0, arbiterAddresses))
+      .to.emit(newResolver, "ArbitersSet")
+      .withArgs(0, arbiterAddresses);
+  });
 });
 
