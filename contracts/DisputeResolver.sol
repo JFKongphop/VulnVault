@@ -67,6 +67,10 @@ contract DisputeResolver is ZamaEthereumConfig {
     bytes32 reporterWonHandle
   );
   event OutcomeExecuted(uint256 indexed disputeId, bool reporterWon);
+  event BugBountyProgramSet(address indexed program);
+  event VaultSet(address indexed vault);
+  event ReputationSet(address indexed reputation);
+  event ArbitersSet(uint256 indexed programId, address[] arbiters);
 
   modifier onlyArbiter(uint256 disputeId) {
     Dispute storage d = _disputes[disputeId];
@@ -96,22 +100,26 @@ contract DisputeResolver is ZamaEthereumConfig {
   function setBugBountyProgram(address addr) external {
     require(bugBountyProgram == address(0), "Already set");
     bugBountyProgram = addr;
+    emit BugBountyProgramSet(addr);
   }
 
   function setVault(address addr) external {
     require(address(vault) == address(0), "Already set");
     vault = IBountyVault(addr);
+    emit VaultSet(addr);
   }
 
   function setReputation(address addr) external {
     require(reputation == address(0), "Already set");
     reputation = addr;
+    emit ReputationSet(addr);
   }
 
   function setProgramArbiters(uint256 programId, address[] calldata arbiters) external {
     require(programArbiters[programId].length == 0, "Already set");
     require(arbiters.length >= MIN_ARBITERS, "Need at least 3 arbiters");
     programArbiters[programId] = arbiters;
+    emit ArbitersSet(programId, arbiters);
   }
 
   function raiseDispute(
@@ -139,6 +147,7 @@ contract DisputeResolver is ZamaEthereumConfig {
     d.status = DisputeStatus.Voting;
     d.encryptedReason = encryptedReason;
     d.encryptedEvidence = encryptedEvidence;
+    d.reporterCommitment = IBugBountyProgram(bugBountyProgram).getCommitment(submissionId);
     submissionDispute[submissionId] = disputeId;
     IBugBountyProgram(bugBountyProgram).freezeReport(submissionId);
     IBugBountyProgram(bugBountyProgram).markDisputed(submissionId);
@@ -266,5 +275,58 @@ contract DisputeResolver is ZamaEthereumConfig {
       if (d.hasVoted[arbiters[i]]) count++;
     }
     return count >= REQUIRED_QUORUM;
+  }
+
+  // ── UX View Functions
+  // ─────────────────────────────────────────────────────
+
+  /// @notice Get comprehensive dispute information for frontend/arbiters
+  function getDisputeInfo(uint256 disputeId)
+    external
+    view
+    returns (
+      bytes32 submissionId,
+      uint256 programId,
+      uint256 raisedAt,
+      uint256 votingDeadline,
+      DisputeStatus status,
+      address[] memory arbiters
+    )
+  {
+    Dispute storage d = _disputes[disputeId];
+    return (
+      d.submissionId,
+      d.programId,
+      d.raisedAt,
+      d.votingDeadline,
+      d.status,
+      programArbiters[d.programId]
+    );
+  }
+
+  /// @notice Check if a specific arbiter has voted (avoids revert)
+  function hasArbiterVoted(uint256 disputeId, address arbiter) external view returns (bool) {
+    return _disputes[disputeId].hasVoted[arbiter];
+  }
+
+  /// @notice Get encrypted dispute materials for arbiter review
+  function getDisputeEvidence(uint256 disputeId)
+    external
+    view
+    returns (bytes memory encryptedReason, bytes memory encryptedEvidence)
+  {
+    Dispute storage d = _disputes[disputeId];
+    return (d.encryptedReason, d.encryptedEvidence);
+  }
+
+  /// @notice Get vote count for a dispute (after resolution)
+  function getVoteCount(uint256 disputeId) external view returns (uint256) {
+    Dispute storage d = _disputes[disputeId];
+    address[] storage arbiters = programArbiters[d.programId];
+    uint256 count;
+    for (uint256 i = 0; i < arbiters.length; i++) {
+      if (d.hasVoted[arbiters[i]]) count++;
+    }
+    return count;
   }
 }
