@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FHE, euint8, ebool} from "@fhevm/solidity/lib/FHE.sol";
+import {FHE, euint8, ebool, externalEuint8} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
 import {IBugBountyProgram} from "./interfaces/IBugBountyProgram.sol";
@@ -28,6 +28,7 @@ contract DisputeResolver is ZamaEthereumConfig {
   uint256 public constant MIN_ARBITERS = 3;
   uint256 public constant REQUIRED_QUORUM = 2;
 
+  uint256 public disputeCount;
   struct Dispute {
     uint256 disputeId;
     bytes32 submissionId;
@@ -44,7 +45,6 @@ contract DisputeResolver is ZamaEthereumConfig {
 
   mapping(uint256 => Dispute) private _disputes;
   mapping(bytes32 => uint256) public submissionDispute;
-  uint256 public disputeCount;
   mapping(uint256 => address[]) public programArbiters;
 
   // Stored handles from resolveDispute — publicly decryptable via oracle
@@ -55,6 +55,18 @@ contract DisputeResolver is ZamaEthereumConfig {
   address public bugBountyProgram;
   IBountyVault public vault;
   address public reputation;
+
+
+  event DisputeRaised(uint256 indexed disputeId, bytes32 indexed submissionId);
+  event DisputeWindowOpen(bytes32 indexed submissionId, uint256 deadline);
+  event VoteSubmitted(uint256 indexed disputeId, address indexed arbiter);
+  event DisputeResolved(
+    uint256 indexed disputeId, 
+    bytes32 forReporterHandle, 
+    bytes32 forAdminHandle, 
+    bytes32 reporterWonHandle
+  );
+  event OutcomeExecuted(uint256 indexed disputeId, bool reporterWon);
 
   modifier onlyArbiter(uint256 disputeId) {
     Dispute storage d = _disputes[disputeId];
@@ -127,12 +139,16 @@ contract DisputeResolver is ZamaEthereumConfig {
     emit DisputeRaised(disputeId, submissionId);
   }
 
-  function submitVote(uint256 disputeId, Vote vote, bytes calldata) external onlyArbiter(disputeId) {
+  function submitVote(
+    uint256 disputeId, 
+    externalEuint8 encryptedVote,
+    bytes calldata inputProof
+  ) external onlyArbiter(disputeId) {
     Dispute storage d = _disputes[disputeId];
     require(d.status == DisputeStatus.Voting, "Not in voting phase");
     require(block.timestamp < d.votingDeadline, "Voting closed");
     require(!d.hasVoted[msg.sender], "Already voted");
-    d.encryptedVotes[msg.sender] = FHE.asEuint8(uint8(vote));
+    d.encryptedVotes[msg.sender] = FHE.fromExternal(encryptedVote, inputProof);
     d.hasVoted[msg.sender] = true;
     FHE.allowThis(d.encryptedVotes[msg.sender]);
     emit VoteSubmitted(disputeId, msg.sender);
@@ -225,12 +241,4 @@ contract DisputeResolver is ZamaEthereumConfig {
     }
     return count >= REQUIRED_QUORUM;
   }
-
-  event DisputeRaised(uint256 indexed disputeId, bytes32 indexed submissionId);
-  event DisputeWindowOpen(bytes32 indexed submissionId, uint256 deadline);
-  event VoteSubmitted(uint256 indexed disputeId, address indexed arbiter);
-  event DisputeResolved(
-    uint256 indexed disputeId, bytes32 forReporterHandle, bytes32 forAdminHandle, bytes32 reporterWonHandle
-  );
-  event OutcomeExecuted(uint256 indexed disputeId, bool reporterWon);
 }
