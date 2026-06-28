@@ -159,8 +159,18 @@ describe("FullFlow Integration", function () {
       (l: any) => l.fragment?.name === "DisputeRaised",
     ) as any;
     const disputeId = dEv.args[0];
-    await resolver.connect(s[3]).submitVote(disputeId, 1, "0x");
-    await resolver.connect(s[4]).submitVote(disputeId, 1, "0x");
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, s[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(s[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, s[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     await resolver.resolveDispute(disputeId);
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(2);
   });
@@ -361,8 +371,18 @@ describe("FullFlow Integration", function () {
           "0x",
         );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-      await resolver.connect(s[3]).submitVote(disputeId, 1, "0x"); // ForReporter
-      await resolver.connect(s[4]).submitVote(disputeId, 1, "0x"); // ForReporter
+      
+      const resolverAddr = await resolver.getAddress();
+      const inp3 = fhevm.createEncryptedInput(resolverAddr, s[3].address);
+      inp3.add8(1); // ForReporter
+      const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+      await resolver.connect(s[3]).submitVote(disputeId, handles3[0], inputProof3);
+      
+      const inp4 = fhevm.createEncryptedInput(resolverAddr, s[4].address);
+      inp4.add8(1); // ForReporter
+      const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+      await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
+      
       await resolver.resolveDispute(disputeId);
       await resolver.executeOutcome(disputeId, 5_000n * D6, 3);
       expect((await bb.getSubmissionMeta(sid))[1]).to.equal(2n); // Approved
@@ -389,8 +409,18 @@ describe("FullFlow Integration", function () {
           "0x",
         );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-      await resolver.connect(s[3]).submitVote(disputeId, 2, "0x"); // ForAdmin
-      await resolver.connect(s[4]).submitVote(disputeId, 2, "0x"); // ForAdmin
+      
+      const resolverAddr = await resolver.getAddress();
+      const inp3 = fhevm.createEncryptedInput(resolverAddr, s[3].address);
+      inp3.add8(2); // ForAdmin
+      const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+      await resolver.connect(s[3]).submitVote(disputeId, handles3[0], inputProof3);
+      
+      const inp4 = fhevm.createEncryptedInput(resolverAddr, s[4].address);
+      inp4.add8(2); // ForAdmin
+      const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+      await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
+      
       await resolver.resolveDispute(disputeId);
       await resolver.executeOutcome(disputeId, 0, 0); // admin wins
       // frozen = false after unfreezeReport
@@ -418,8 +448,18 @@ describe("FullFlow Integration", function () {
           "0x",
         );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-      await resolver.connect(s[3]).submitVote(disputeId, 1, "0x");
-      await resolver.connect(s[4]).submitVote(disputeId, 1, "0x");
+      
+      const resolverAddr = await resolver.getAddress();
+      const inp3 = fhevm.createEncryptedInput(resolverAddr, s[3].address);
+      inp3.add8(1); // ForReporter
+      const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+      await resolver.connect(s[3]).submitVote(disputeId, handles3[0], inputProof3);
+      
+      const inp4 = fhevm.createEncryptedInput(resolverAddr, s[4].address);
+      inp4.add8(1); // ForReporter
+      const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+      await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
+      
       await resolver.resolveDispute(disputeId);
       await expect(resolver.executeOutcome(disputeId, 5_000n * D6, 3))
         .to.emit(resolver, "OutcomeExecuted").withArgs(disputeId, true);
@@ -447,8 +487,18 @@ describe("FullFlow Integration", function () {
         );
       const disputeId = ((await tx.wait())?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
       expect(await resolver.getDisputeStatus(disputeId)).to.equal(1); // Voting
-      await resolver.connect(s[3]).submitVote(disputeId, 1, "0x");
-      await resolver.connect(s[4]).submitVote(disputeId, 1, "0x");
+      
+      const resolverAddr = await resolver.getAddress();
+      const inp3 = fhevm.createEncryptedInput(resolverAddr, s[3].address);
+      inp3.add8(1); // ForReporter
+      const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+      await resolver.connect(s[3]).submitVote(disputeId, handles3[0], inputProof3);
+      
+      const inp4 = fhevm.createEncryptedInput(resolverAddr, s[4].address);
+      inp4.add8(1); // ForReporter
+      const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+      await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
+      
       await resolver.resolveDispute(disputeId);
       expect(await resolver.getDisputeStatus(disputeId)).to.equal(2); // Resolved
       await resolver.executeOutcome(disputeId, 5_000n * D6, 2);
@@ -490,8 +540,18 @@ describe("FullFlow Integration", function () {
           (l: any) => l.fragment?.name === "DisputeRaised",
         ) as any
       ).args[0];
-      await resolver.connect(s[3]).submitVote(disputeId, 2, "0x");
-      await resolver.connect(s[4]).submitVote(disputeId, 2, "0x");
+      
+      const resolverAddr = await resolver.getAddress();
+      const inp3 = fhevm.createEncryptedInput(resolverAddr, s[3].address);
+      inp3.add8(2); // ForAdmin
+      const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+      await resolver.connect(s[3]).submitVote(disputeId, handles3[0], inputProof3);
+      
+      const inp4 = fhevm.createEncryptedInput(resolverAddr, s[4].address);
+      inp4.add8(2); // ForAdmin
+      const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+      await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
+      
       await resolver.resolveDispute(disputeId);
       // Admin wins → unfreezeReport (no vault.unlockFunds since resolver has no vault set)
       await resolver.executeOutcome(disputeId, 0, 0);
