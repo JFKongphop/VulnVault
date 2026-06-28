@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {FHE, euint8, ebool} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
+import {IBugBountyProgram} from "./interfaces/IBugBountyProgram.sol";
+import {IWhitehatReputation} from "./interfaces/IWhitehatReputation.sol";
 
 /// @title DisputeResolver — FHE-encrypted voting for report escalation
 /// @notice Arbiters review and vote using FHE-encrypted ballots.
@@ -231,24 +233,4 @@ contract DisputeResolver is ZamaEthereumConfig {
     uint256 indexed disputeId, bytes32 forReporterHandle, bytes32 forAdminHandle, bytes32 reporterWonHandle
   );
   event OutcomeExecuted(uint256 indexed disputeId, bool reporterWon);
-}
-
-interface IBugBountyProgram {
-  enum ReportStatus {
-    Pending,
-    UnderReview,
-    Approved,
-    Rejected,
-    Disputed
-  }
-  function getStatus(bytes32 submissionId) external view returns (ReportStatus);
-  function getProgramId(bytes32 submissionId) external view returns (uint256);
-  function freezeReport(bytes32 submissionId) external;
-  function unfreezeReport(bytes32 submissionId) external;
-  function overrideApprove(bytes32 submissionId, uint256 bountyAmount, uint8 severity) external;
-  function markDisputed(bytes32 submissionId) external;
-}
-
-interface IWhitehatReputation {
-  function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external;
 }
