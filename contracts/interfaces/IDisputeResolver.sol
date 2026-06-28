@@ -31,7 +31,7 @@ interface IDisputeResolver {
 
   function resolveDispute(uint256 disputeId) external;
 
-  function executeOutcome(uint256 disputeId, uint256 bountyAmount, uint8 severity) external;
+  function executeOutcome(uint256 disputeId, bool reporterWon, uint256 bountyAmount, uint8 severity) external;
 
   function onReportRejected(bytes32 submissionId, uint256 programId) external;
 

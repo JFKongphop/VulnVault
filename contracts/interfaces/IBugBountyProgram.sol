@@ -70,6 +70,8 @@ interface IBugBountyProgram {
 
   function getProgramId(bytes32) external view returns (uint256);
 
+  function admin() external view returns (address);
+
   function getAllSubmissionIds() external view returns (bytes32[] memory);
 
   function getMySubmissionIds() external view returns (bytes32[] memory);
