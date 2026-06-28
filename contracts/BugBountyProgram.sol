@@ -6,6 +6,7 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
 import {IProgramRegistry} from "./interfaces/IProgramRegistry.sol";
+import {IBugBountyProgram} from "./interfaces/IBugBountyProgram.sol";
 
 interface IWhitehatReputation {
   function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external;
@@ -19,15 +20,7 @@ interface IDisputeResolver {
 /// @notice All sensitive report fields are stored FHE-encrypted. Decryption
 ///         is async via FHE.makePubliclyDecryptable() + oracle. The public
 ///         sees only metadata (submissionId, timestamp, status, autoEscalated).
-contract BugBountyProgram is ZamaEthereumConfig {
-  enum ReportStatus {
-    Pending,
-    UnderReview,
-    Approved,
-    Rejected,
-    Disputed
-  }
-
+contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   uint256 public immutable programId;
   address public admin;
   address public registryAddr;
@@ -37,9 +30,9 @@ contract BugBountyProgram is ZamaEthereumConfig {
   address public disputeResolver;
   IBountyVault public vault;
   IProgramRegistry public registry;
-  
+
   // ── Option 2: Client-Side Encryption Support
-  bytes public adminPublicKey;  // Admin's RSA public key for encrypting symmetric keys
+  bytes public adminPublicKey; // Admin's RSA public key for encrypting symmetric keys
 
   struct SubmittedReport {
     bytes32 submissionId;
@@ -63,7 +56,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
     bytes encryptedAttachments;
     euint64 encryptedBountyAmount;
     bytes encryptedAdminNotes;
-    
+
     // Option 2: Symmetric key encrypted with admin's public key
     bytes encryptedSymmetricKey;
   }
@@ -438,10 +431,7 @@ contract BugBountyProgram is ZamaEthereumConfig {
   /// @return Encrypted admin notes
   function getAdminNotes(bytes32 submissionId) external view returns (bytes memory) {
     SubmittedReport storage r = _submissions[submissionId];
-    require(
-      msg.sender == admin || msg.sender == registryAddr || r.reporter == msg.sender,
-      "Not authorized"
-    );
+    require(msg.sender == admin || msg.sender == registryAddr || r.reporter == msg.sender, "Not authorized");
     return r.encryptedAdminNotes;
   }
 
