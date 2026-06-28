@@ -118,9 +118,17 @@ describe("DisputeResolver", function () {
     const ev = receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised");
     const disputeId = (ev as any).args[0];
 
-    // Two arbiters vote ForReporter (1) — encrypted by the contract via FHE.asEuint8
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x");
+    // Two arbiters vote ForReporter (1) — encrypted client-side via TFHE
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
 
     // Resolve — FHE.add tallies votes, FHE.makePubliclyDecryptable on handles
     const resolveTx = await resolver.resolveDispute(disputeId);
@@ -162,8 +170,16 @@ describe("DisputeResolver", function () {
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
 
-    await resolver.connect(signers[3]).submitVote(disputeId, 2, "0x"); // ForAdmin
-    await resolver.connect(signers[4]).submitVote(disputeId, 2, "0x"); // ForAdmin
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(2); // ForAdmin
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(2); // ForAdmin
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
 
     const resolveTx = await resolver.resolveDispute(disputeId);
     const resolveReceipt = await resolveTx.wait();
@@ -199,7 +215,12 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await expect(resolver.connect(signers[2]).submitVote(disputeId, 1, "0x")).to.be.reverted;
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp2 = fhevm.createEncryptedInput(resolverAddr, signers[2].address);
+    inp2.add8(1); // ForReporter
+    const { handles: handles2, inputProof: inputProof2 } = await inp2.encrypt();
+    await expect(resolver.connect(signers[2]).submitVote(disputeId, handles2[0], inputProof2)).to.be.reverted;
   });
 
   it("reverts double vote", async () => {
@@ -224,8 +245,17 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
-    await expect(resolver.connect(signers[3]).submitVote(disputeId, 2, "0x")).to.be.reverted;
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3a = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3a.add8(1); // ForReporter
+    const { handles: handles3a, inputProof: inputProof3a } = await inp3a.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3a[0], inputProof3a);
+    
+    const inp3b = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3b.add8(2); // ForAdmin
+    const { handles: handles3b, inputProof: inputProof3b } = await inp3b.encrypt();
+    await expect(resolver.connect(signers[3]).submitVote(disputeId, handles3b[0], inputProof3b)).to.be.reverted;
   });
 
   it("reverts dispute on non-rejected report", async () => {
@@ -311,7 +341,13 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
     await time.increase(5 * 24 * 3600 + 1);
     await resolver.resolveDispute(disputeId);
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(2); // Resolved
@@ -339,8 +375,18 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x");
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     await resolver.resolveDispute(disputeId);
     await expect(resolver.executeOutcome(disputeId, 5_000n * 1_000_000n, 2)).to.emit(resolver, "OutcomeExecuted");
   });
@@ -368,8 +414,13 @@ describe("DisputeResolver", function () {
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     await time.increase(5 * 24 * 3600 + 1); // past 5-day voting window
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
     await expect(
-      resolver.connect(signers[3]).submitVote(disputeId, 1, "0x")
+      resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3)
     ).to.be.revertedWith("Voting closed");
   });
 
@@ -395,9 +446,23 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x"); // ForReporter
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x"); // ForReporter
-    await resolver.connect(signers[5]).submitVote(disputeId, 1, "0x"); // ForReporter (all voted → resolve)
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
+    const inp5 = fhevm.createEncryptedInput(resolverAddr, signers[5].address);
+    inp5.add8(1); // ForReporter (all voted → resolve)
+    const { handles: handles5, inputProof: inputProof5 } = await inp5.encrypt();
+    await resolver.connect(signers[5]).submitVote(disputeId, handles5[0], inputProof5);
+    
     const tx2 = await resolver.resolveDispute(disputeId);
     const receipt2 = await tx2.wait();
     const ev = receipt2?.logs.find((l: any) => l.fragment?.name === "DisputeResolved");
@@ -427,8 +492,18 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x"); // ForReporter
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x"); // ForReporter
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     // signers[5] abstains — advance time to pass deadline
     await time.increase(5 * 24 * 3600 + 1);
     const tx2 = await resolver.resolveDispute(disputeId);
@@ -460,8 +535,18 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 2, "0x"); // ForAdmin
-    await resolver.connect(signers[4]).submitVote(disputeId, 2, "0x"); // ForAdmin
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(2); // ForAdmin
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(2); // ForAdmin
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     await resolver.resolveDispute(disputeId);
     await expect(
       resolver.executeOutcome(disputeId, 0, 0) // bountyAmount=0 → admin wins path
@@ -517,8 +602,18 @@ describe("DisputeResolver", function () {
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(1); // Voting
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x");
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     await resolver.resolveDispute(disputeId);
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(2); // Resolved
     await resolver.executeOutcome(disputeId, 5_000n * 1_000_000n, 2);
@@ -547,8 +642,18 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x");
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     await resolver.resolveDispute(disputeId);
     const [status, forReporter, forAdmin, reporterWon] = await resolver.getDisputeOutcome(disputeId);
     expect(status).to.equal(2); // Resolved
@@ -643,8 +748,18 @@ describe("DisputeResolver", function () {
       );
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
-    await resolver.connect(signers[3]).submitVote(disputeId, 1, "0x");
-    await resolver.connect(signers[4]).submitVote(disputeId, 1, "0x");
+    
+    const resolverAddr = await resolver.getAddress();
+    const inp3 = fhevm.createEncryptedInput(resolverAddr, signers[3].address);
+    inp3.add8(1); // ForReporter
+    const { handles: handles3, inputProof: inputProof3 } = await inp3.encrypt();
+    await resolver.connect(signers[3]).submitVote(disputeId, handles3[0], inputProof3);
+    
+    const inp4 = fhevm.createEncryptedInput(resolverAddr, signers[4].address);
+    inp4.add8(1); // ForReporter
+    const { handles: handles4, inputProof: inputProof4 } = await inp4.encrypt();
+    await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
+    
     await resolver.resolveDispute(disputeId);
     await expect(resolver.resolveDispute(disputeId)).to.be.revertedWith("Already resolved");
   });
