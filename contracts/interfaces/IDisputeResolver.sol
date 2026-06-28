@@ -27,7 +27,7 @@ interface IDisputeResolver {
     external
     returns (uint256 disputeId);
 
-  function submitVote(uint256 disputeId, Vote vote, bytes calldata arbiterProof) external;
+  function submitVote(uint256 disputeId, bytes calldata encryptedVote, bytes calldata inputProof) external;
 
   function resolveDispute(uint256 disputeId) external;
 
