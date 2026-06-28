@@ -388,7 +388,7 @@ describe("DisputeResolver", function () {
     await resolver.connect(signers[4]).submitVote(disputeId, handles4[0], inputProof4);
     
     await resolver.resolveDispute(disputeId);
-    await expect(resolver.executeOutcome(disputeId, 5_000n * 1_000_000n, 2)).to.emit(resolver, "OutcomeExecuted");
+    await expect(resolver.connect(signers[1]).executeOutcome(disputeId, true, 5_000n * 1_000_000n, 2)).to.emit(resolver, "OutcomeExecuted");
   });
 
   it("voting deadline blocks late votes", async () => {
@@ -549,7 +549,7 @@ describe("DisputeResolver", function () {
     
     await resolver.resolveDispute(disputeId);
     await expect(
-      resolver.executeOutcome(disputeId, 0, 0) // bountyAmount=0 → admin wins path
+      resolver.connect(signers[1]).executeOutcome(disputeId, false, 0, 0) // bountyAmount=0 → admin wins path
     ).to.emit(resolver, "OutcomeExecuted").withArgs(disputeId, false);
   });
 
@@ -576,7 +576,7 @@ describe("DisputeResolver", function () {
     const receipt = await tx.wait();
     const disputeId = (receipt?.logs.find((l: any) => l.fragment?.name === "DisputeRaised") as any).args[0];
     // Don't resolve — try to execute directly
-    await expect(resolver.executeOutcome(disputeId, 0, 0)).to.be.revertedWith("Not yet resolved");
+    await expect(resolver.connect(signers[1]).executeOutcome(disputeId, true, 0, 0)).to.be.revertedWith("Not yet resolved");
   });
 
   it("dispute status transitions: Voting → Resolved → Executed", async () => {
@@ -616,7 +616,7 @@ describe("DisputeResolver", function () {
     
     await resolver.resolveDispute(disputeId);
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(2); // Resolved
-    await resolver.executeOutcome(disputeId, 5_000n * 1_000_000n, 2);
+    await resolver.connect(signers[1]).executeOutcome(disputeId, true, 5_000n * 1_000_000n, 2);
     expect(await resolver.getDisputeStatus(disputeId)).to.equal(3); // Executed
   });
 

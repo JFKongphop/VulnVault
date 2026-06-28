@@ -384,7 +384,7 @@ describe("FullFlow Integration", function () {
       await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
       
       await resolver.resolveDispute(disputeId);
-      await resolver.executeOutcome(disputeId, 5_000n * D6, 3);
+      await resolver.connect(s[1]).executeOutcome(disputeId, true, 5_000n * D6, 3);
       expect((await bb.getSubmissionMeta(sid))[1]).to.equal(2n); // Approved
     });
 
@@ -422,7 +422,7 @@ describe("FullFlow Integration", function () {
       await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
       
       await resolver.resolveDispute(disputeId);
-      await resolver.executeOutcome(disputeId, 0, 0); // admin wins
+      await resolver.connect(s[1]).executeOutcome(disputeId, false, 0, 0); // admin wins
       // frozen = false after unfreezeReport
       expect((await bb.getSubmissionMeta(sid))[3]).to.be.false;
     });
@@ -461,7 +461,7 @@ describe("FullFlow Integration", function () {
       await resolver.connect(s[4]).submitVote(disputeId, handles4[0], inputProof4);
       
       await resolver.resolveDispute(disputeId);
-      await expect(resolver.executeOutcome(disputeId, 5_000n * D6, 3))
+      await expect(resolver.connect(s[1]).executeOutcome(disputeId, true, 5_000n * D6, 3))
         .to.emit(resolver, "OutcomeExecuted").withArgs(disputeId, true);
     });
 
@@ -501,7 +501,7 @@ describe("FullFlow Integration", function () {
       
       await resolver.resolveDispute(disputeId);
       expect(await resolver.getDisputeStatus(disputeId)).to.equal(2); // Resolved
-      await resolver.executeOutcome(disputeId, 5_000n * D6, 2);
+      await resolver.connect(s[1]).executeOutcome(disputeId, true, 5_000n * D6, 2);
       expect(await resolver.getDisputeStatus(disputeId)).to.equal(3); // Executed
     });
 
@@ -554,7 +554,7 @@ describe("FullFlow Integration", function () {
       
       await resolver.resolveDispute(disputeId);
       // Admin wins → unfreezeReport (no vault.unlockFunds since resolver has no vault set)
-      await resolver.executeOutcome(disputeId, 0, 0);
+      await resolver.connect(s[1]).executeOutcome(disputeId, false, 0, 0);
       // First report's locked funds unaffected
       expect(await vault.getLockedBalance(PID)).to.equal(bounty);
       // Second report unfrozen
