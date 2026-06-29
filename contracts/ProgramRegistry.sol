@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {FHE, euint64, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
+import {IERC7984} from "@openzeppelin/confidential-contracts/interfaces/IERC7984.sol";
 import {BugBountyProgram} from "./BugBountyProgram.sol";
 import {BountyVault} from "./BountyVault.sol";
 import {ConfidentialPayouts} from "./ConfidentialPayouts.sol";
@@ -34,7 +35,7 @@ contract ProgramRegistry {
     address merkleTreeContract;
   }
 
-  IERC20 public immutable cUSDT;
+  IERC7984 public immutable cUSDT;
   address public reputation;
   DisputeResolver public disputeResolver;
 
@@ -42,8 +43,14 @@ contract ProgramRegistry {
   mapping(address => uint256[]) private _adminPrograms;
   uint256 public programCount;
 
+  event ProgramCreated(uint256 indexed pid, string name, address indexed admin);
+  event ProgramUpdated(uint256 indexed pid, bool active);
+  event PoolToppedUp(uint256 indexed pid, address indexed by, uint256 amount);
+  event AdminTransferred(uint256 indexed pid, address indexed oldAdmin, address indexed newAdmin);
+  event ArbitersUpdated(uint256 indexed pid, address[] arbiters);
+
   constructor(address c, address r, address d) {
-    cUSDT = IERC20(c);
+    cUSDT = IERC7984(c);
     reputation = r;
     disputeResolver = DisputeResolver(d);
   }
@@ -64,8 +71,8 @@ contract ProgramRegistry {
     pid = programCount++;
     BugBountyProgram bb = new BugBountyProgram(msg.sender, pid);
     BountyVault bv = new BountyVault(address(cUSDT), msg.sender, pid);
-    ConfidentialPayouts cp = new ConfidentialPayouts(msg.sender, pid);
     BugBountyMerkleTree merkleTree = new BugBountyMerkleTree();
+    ConfidentialPayouts cp = new ConfidentialPayouts(pid, address(bb), address(bv), address(merkleTree));
     bb.setRegistry(address(this));
     bb.setVault(address(bv));
     bb.setReputation(reputation);
@@ -75,11 +82,10 @@ contract ProgramRegistry {
     bv.setConfidentialPayouts(address(cp));
     bv.setDisputeResolver(address(disputeResolver));
     bv.setRegistry(address(this));
-    cp.setVault(address(bv));
-    cp.setMerkleTree(address(merkleTree));
     merkleTree.authorise(address(bb));
     disputeResolver.setProgramArbiters(pid, arbiters);
-    if (pool > 0) cUSDT.transferFrom(msg.sender, address(bv), pool);
+    // Note: Admin should separately call cUSDT.confidentialTransferAndCall(vault, encAmount, proof, "")
+    // to deposit initial pool funds if pool > 0. The vault handles via onConfidentialTransferReceived.
     _programs[pid] = BountyProgram(
       pid,
       name,
@@ -143,7 +149,8 @@ contract ProgramRegistry {
   function topUpPool(uint256 pid, uint256 amount) external {
     require(_programs[pid].active, "Not active");
     require(amount > 0, "Zero amount");
-    cUSDT.transferFrom(msg.sender, _programs[pid].vaultContract, amount);
+    // Note: Caller should separately call cUSDT.confidentialTransferAndCall(vault, encAmount, proof, "")
+    // to deposit funds. This function only updates the tracking.
     _programs[pid].totalPool += amount;
     emit PoolToppedUp(pid, msg.sender, amount);
   }
@@ -196,9 +203,92 @@ contract ProgramRegistry {
     emit ArbitersUpdated(pid, arbiters);
   }
 
-  event ProgramCreated(uint256 indexed pid, string name, address indexed admin);
-  event ProgramUpdated(uint256 indexed pid, bool active);
-  event PoolToppedUp(uint256 indexed pid, address indexed by, uint256 amount);
-  event AdminTransferred(uint256 indexed pid, address indexed oldAdmin, address indexed newAdmin);
-  event ArbitersUpdated(uint256 indexed pid, address[] arbiters);
+  // === Additional UX Helper Functions ===
+
+  function deactivateProgram(uint256 pid) external {
+    require(msg.sender == _programs[pid].admin, "Not admin");
+    _programs[pid].active = false;
+    emit ProgramUpdated(pid, false);
+  }
+
+  function isAdmin(uint256 pid, address addr) external view returns (bool) {
+    return _programs[pid].admin == addr;
+  }
+
+  function isProgramValid(uint256 pid) external view returns (bool) {
+    return pid < programCount && _programs[pid].admin != address(0);
+  }
+
+  function getInactivePrograms() external view returns (uint256[] memory) {
+    uint256 count;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (!_programs[i].active) count++;
+    }
+    uint256[] memory ids = new uint256[](count);
+    uint256 j;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (!_programs[i].active) ids[j++] = i;
+    }
+    return ids;
+  }
+
+  function getProgramsByTier(ReputationTier tier) external view returns (uint256[] memory) {
+    uint256 count;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (_programs[i].minTier == tier && _programs[i].active) count++;
+    }
+    uint256[] memory ids = new uint256[](count);
+    uint256 j;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (_programs[i].minTier == tier && _programs[i].active) ids[j++] = i;
+    }
+    return ids;
+  }
+
+  function getProgramsWithMinPool(uint256 minPool) external view returns (uint256[] memory) {
+    uint256 count;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (_programs[i].totalPool >= minPool && _programs[i].active) count++;
+    }
+    uint256[] memory ids = new uint256[](count);
+    uint256 j;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (_programs[i].totalPool >= minPool && _programs[i].active) ids[j++] = i;
+    }
+    return ids;
+  }
+
+  function getBatchPrograms(uint256[] calldata pids) external view returns (BountyProgram[] memory) {
+    BountyProgram[] memory programs = new BountyProgram[](pids.length);
+    for (uint256 i = 0; i < pids.length; i++) {
+      programs[i] = _programs[pids[i]];
+    }
+    return programs;
+  }
+
+  function getTotalStats() external view returns (
+    uint256 totalPrograms,
+    uint256 activePrograms,
+    uint256 totalPoolAcrossAll,
+    uint256 totalSubmissions
+  ) {
+    totalPrograms = programCount;
+    for (uint256 i = 0; i < programCount; i++) {
+      if (_programs[i].active) activePrograms++;
+      totalPoolAcrossAll += _programs[i].totalPool;
+      totalSubmissions += _programs[i].submissionCount;
+    }
+  }
+
+  function getProgramContracts(uint256 pid) external view returns (
+    address bugBounty,
+    address vault,
+    address merkleTree
+  ) {
+    return (
+      _programs[pid].bugBountyContract,
+      _programs[pid].vaultContract,
+      _programs[pid].merkleTreeContract
+    );
+  }
 }
