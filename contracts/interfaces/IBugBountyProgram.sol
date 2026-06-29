@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {externalEuint8} from "@fhevm/solidity/lib/FHE.sol";
+import {externalEuint8, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 
 /// @title IBugBountyProgram — Core FHE-encrypted bug report storage
 /// @notice All sensitive report fields are stored FHE-encrypted.
@@ -40,8 +40,9 @@ interface IBugBountyProgram {
 
   function approveReport(
     bytes32 submissionId,
-    uint256 bountyAmount,
+    externalEuint64 encBountyAmount,
     uint8 severity,
+    bytes calldata inputProof,
     bytes calldata encryptedNotes
   )
     external;
@@ -50,7 +51,7 @@ interface IBugBountyProgram {
 
   function decryptMyReport(bytes32 submissionId) external;
 
-  function overrideApprove(bytes32 submissionId, uint256 bountyAmount, uint8 severity) external;
+  function overrideApprove(bytes32 submissionId, externalEuint64 encBountyAmount, uint8 severity, bytes calldata inputProof) external;
 
   function freezeReport(bytes32 submissionId) external;
 

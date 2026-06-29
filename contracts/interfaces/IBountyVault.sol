@@ -9,8 +9,8 @@ interface IBountyVault {
   /// @notice Deposit cUSDT into a program's vault.
   function deposit(uint256 programId, uint256 amount) external;
 
-  /// @notice Lock funds for an approved report (called by BugBountyProgram).
-  function lockFunds(uint256 programId, bytes32 submissionId, uint256 amount) external;
+  /// @notice Lock funds for an approved report (encrypted amount - contract calls).
+  function lockFunds(uint256 programId, bytes32 submissionId, euint64 encAmount) external;
 
   /// @notice Release locked funds to reporter's fresh wallet (called by
   ///         ConfidentialPayouts after ZK verification).
