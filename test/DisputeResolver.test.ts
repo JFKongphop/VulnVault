@@ -966,7 +966,7 @@ describe("DisputeResolver", function () {
   });
 
   it("emits ReputationSet event when setting reputation", async () => {
-    const mockReputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy();
+    const mockReputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy(signers[0].address);
     await mockReputation.waitForDeployment();
     const reputationAddr = await mockReputation.getAddress();
     
