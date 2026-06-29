@@ -121,6 +121,13 @@ contract DisputeResolver is ZamaEthereumConfig {
     programArbiters[programId] = arbiters;
     emit ArbitersSet(programId, arbiters);
   }
+  
+  function updateProgramArbiters(uint256 programId, address[] calldata arbiters) external {
+    require(programArbiters[programId].length > 0, "Not initialized");
+    require(arbiters.length >= MIN_ARBITERS, "Need at least 3 arbiters");
+    programArbiters[programId] = arbiters;
+    emit ArbitersSet(programId, arbiters);
+  }
 
   function raiseDispute(
     bytes32 submissionId,
