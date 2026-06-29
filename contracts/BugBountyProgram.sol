@@ -65,9 +65,16 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   event ReportSubmitted(bytes32 indexed submissionId, uint256 timestamp);
   event CriticalReportFlagged(bytes32 indexed submissionId, bytes32 isCriticalHandle);
   event ReportDisputed(bytes32 indexed submissionId);
-  event ReportUnderReview(bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle);
+  event ReportUnderReview(
+    bytes32 indexed submissionId, 
+    bytes32 impactHandle, 
+    bytes32 severityHandle
+  );
   event ReportDecrypted(
-    bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle, bytes32 bountyHandle
+    bytes32 indexed submissionId, 
+    bytes32 impactHandle, 
+    bytes32 severityHandle, 
+    bytes32 bountyHandle
   );
   event ReportApproved(bytes32 indexed submissionId, bytes32 bountyHandle);
   event ReportRejected(bytes32 indexed submissionId);
