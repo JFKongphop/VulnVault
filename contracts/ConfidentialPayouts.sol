@@ -23,6 +23,7 @@ contract ConfidentialPayouts is IConfidentialPayouts {
 
   IMerkleTree public merkleTree;
   IBountyVault public vault;
+  address public bugBountyProgram;
 
   /// @dev Tracks spent nullifiers to prevent double withdrawals.
   mapping(bytes32 => bool) public nullifierSpent;
@@ -31,42 +32,44 @@ contract ConfidentialPayouts is IConfidentialPayouts {
   bytes32 public currentRoot;
 
   uint256 public programId;
-  address public admin;
+
+  // ── Events
+  // ─────────────────────────────────────────────────────────────
+
+  /// @notice Intentionally minimal — reveals nothing about reporter or amount.
+  event Withdrawal(bytes32 indexed nullifierHash, bytes32 indexed root);
+  event MerkleRootUpdated(bytes32 indexed newRoot);
 
   // ── Modifiers
   // ──────────────────────────────────────────────────────────
 
-  modifier onlyAdmin() {
-    require(msg.sender == admin, "Not admin");
+  modifier onlyBugBountyProgram() {
+    require(msg.sender == bugBountyProgram, "Not bug bounty program");
     _;
   }
 
   // ── Constructor
   // ────────────────────────────────────────────────────────
 
-  constructor(address adminAddr, uint256 pid) {
-    require(adminAddr != address(0), "Zero admin");
-    admin = adminAddr;
+  constructor(
+    uint256 pid,
+    address _bugBountyProgram,
+    address _vault,
+    address _merkleTree
+  ) {
+    require(_bugBountyProgram != address(0), "Zero bug bounty program");
+    require(_vault != address(0), "Zero vault");
+    require(_merkleTree != address(0), "Zero merkle tree");
     programId = pid;
-  }
-
-  // ── Setters
-  // ────────────────────────────────────────────────────────────
-
-  function setMerkleTree(address addr) external {
-    require(address(merkleTree) == address(0), "Already set");
-    merkleTree = IMerkleTree(addr);
-  }
-
-  function setVault(address addr) external {
-    require(address(vault) == address(0), "Already set");
-    vault = IBountyVault(addr);
+    bugBountyProgram = _bugBountyProgram;
+    vault = IBountyVault(_vault);
+    merkleTree = IMerkleTree(_merkleTree);
   }
 
   // ── Update Merkle Root
   // ─────────────────────────────────────────────────
 
-  function updateMerkleRoot(bytes32 newRoot) external {
+  function updateMerkleRoot(bytes32 newRoot) external onlyBugBountyProgram {
     // Called by BugBountyProgram after each approval
     currentRoot = newRoot;
     emit MerkleRootUpdated(newRoot);
@@ -117,11 +120,4 @@ contract ConfidentialPayouts is IConfidentialPayouts {
   function isNullifierSpent(bytes32 nullifier) external view returns (bool) {
     return nullifierSpent[nullifier];
   }
-
-  // ── Events
-  // ─────────────────────────────────────────────────────────────
-
-  /// @notice Intentionally minimal — reveals nothing about reporter or amount.
-  event Withdrawal(bytes32 indexed nullifierHash, bytes32 indexed root);
-  event MerkleRootUpdated(bytes32 indexed newRoot);
 }
