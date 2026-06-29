@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FHE, euint8, euint64, ebool, externalEuint8} from "@fhevm/solidity/lib/FHE.sol";
+import {FHE, euint8, euint64, ebool, externalEuint8, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
@@ -69,7 +69,7 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   event ReportDecrypted(
     bytes32 indexed submissionId, bytes32 impactHandle, bytes32 severityHandle, bytes32 bountyHandle
   );
-  event ReportApproved(bytes32 indexed submissionId, uint256 bountyAmount);
+  event ReportApproved(bytes32 indexed submissionId, bytes32 bountyHandle);
   event ReportRejected(bytes32 indexed submissionId);
   event ReportFrozen(bytes32 indexed submissionId);
   event ReportUnfrozen(bytes32 indexed submissionId);
@@ -248,12 +248,17 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   // ── Approve Report
   // ─────────────────────────────────────────────────────
 
-  /// @notice Admin approves report. Severity is passed as plaintext since
-  ///         admin decrypted it off-chain during review.
+  /// @notice Admin approves report with encrypted bounty amount.
+  /// @param submissionId The submission ID
+  /// @param encBountyAmount Encrypted bounty amount (admin encrypts off-chain)
+  /// @param severity Plaintext severity (admin decrypted off-chain during review)
+  /// @param inputProof Input proof for encrypted bounty amount
+  /// @param encryptedNotes Admin notes
   function approveReport(
     bytes32 submissionId,
-    uint256 bountyAmount,
+    externalEuint64 encBountyAmount,
     uint8 severity,
+    bytes calldata inputProof,
     bytes calldata encryptedNotes
   )
     external
@@ -263,28 +268,30 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
     SubmittedReport storage r = _submissions[submissionId];
     require(r.status == ReportStatus.UnderReview, "Not under review");
 
-    r.encryptedBountyAmount = FHE.asEuint64(uint64(bountyAmount));
+    r.encryptedBountyAmount = FHE.fromExternal(encBountyAmount, inputProof);
     r.encryptedAdminNotes = encryptedNotes;
     r.status = ReportStatus.Approved;
 
     FHE.allowThis(r.encryptedBountyAmount);
-    FHE.makePubliclyDecryptable(r.encryptedBountyAmount);
+    FHE.allow(r.encryptedBountyAmount, address(vault));
+    FHE.allow(r.encryptedBountyAmount, r.reporter);
 
     if (address(vault) != address(0)) {
-      vault.lockFunds(programId, submissionId, bountyAmount);
+      vault.lockFunds(programId, submissionId, r.encryptedBountyAmount);
     }
 
     if (address(merkleTree) != address(0)) {
-      bytes32 leaf = keccak256(abi.encode(r.commitment, bountyAmount, block.timestamp));
-      merkleTree.insertApprovedLeaf(leaf);
+      // Commitment alone is sufficient for merkle proof
+      merkleTree.insertApprovedLeaf(r.commitment);
     }
 
     // Notify reputation contract (severity passed as plaintext from admin)
+    // Note: We don't pass bounty amount to reputation to preserve privacy
     if (reputation != address(0)) {
-      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, bountyAmount);
+      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, 0);
     }
 
-    emit ReportApproved(submissionId, bountyAmount);
+    emit ReportApproved(submissionId, euint64.unwrap(r.encryptedBountyAmount));
   }
 
   // ── Reject Report
@@ -333,28 +340,28 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
     return euint64.unwrap(_submissions[submissionId].encryptedBountyAmount);
   }
 
-  // ── DisputeResolver Overrides
+  // ── DisputeResolver Overrides & Admin Override
   // ──────────────────────────────────────────
 
-  function overrideApprove(bytes32 submissionId, uint256 bountyAmount, uint8 severity) external onlyDisputeResolver {
+  function overrideApprove(bytes32 submissionId, externalEuint64 encBountyAmount, uint8 severity, bytes calldata inputProof) external onlyAdmin {
     SubmittedReport storage r = _submissions[submissionId];
     r.status = ReportStatus.Approved;
     r.frozen = false;
 
-    r.encryptedBountyAmount = FHE.asEuint64(uint64(bountyAmount));
+    r.encryptedBountyAmount = FHE.fromExternal(encBountyAmount, inputProof);
     FHE.allowThis(r.encryptedBountyAmount);
-    FHE.makePubliclyDecryptable(r.encryptedBountyAmount);
+    FHE.allow(r.encryptedBountyAmount, r.reporter);
 
     if (address(merkleTree) != address(0)) {
-      bytes32 leaf = keccak256(abi.encode(r.commitment, bountyAmount, block.timestamp));
-      merkleTree.insertApprovedLeaf(leaf);
+      // Commitment alone is sufficient for merkle proof
+      merkleTree.insertApprovedLeaf(r.commitment);
     }
 
     if (reputation != address(0)) {
-      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, bountyAmount);
+      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, 0);
     }
 
-    emit ReportApproved(submissionId, bountyAmount);
+    emit ReportApproved(submissionId, euint64.unwrap(r.encryptedBountyAmount));
   }
 
   function freezeReport(bytes32 submissionId) external onlyDisputeResolver {
