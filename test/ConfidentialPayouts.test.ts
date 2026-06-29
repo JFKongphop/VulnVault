@@ -25,26 +25,25 @@ describe("ConfidentialPayouts", function () {
     await vault.waitForDeployment();
     vaultAddr = await vault.getAddress();
 
-    payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(signers[1].address, PID);
-    await payouts.waitForDeployment();
+    // Deploy BugBountyProgram first (needed for ConfidentialPayouts constructor)
+    bb = await (await ethers.getContractFactory("BugBountyProgram")).deploy(signers[1].address, PID);
+    await bb.waitForDeployment();
+    bbAddr = await bb.getAddress();
+
     const hasher = await (await ethers.getContractFactory("Hasher")).deploy();
     await hasher.waitForDeployment();
     merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
       libraries: { Hasher: await hasher.getAddress() }
     })).deploy();
     await merkleTree.waitForDeployment();
-    
-    // Deploy BugBountyProgram
-    bb = await (await ethers.getContractFactory("BugBountyProgram")).deploy(signers[1].address, PID);
-    await bb.waitForDeployment();
-    bbAddr = await bb.getAddress();
+
+    payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, await merkleTree.getAddress());
+    await payouts.waitForDeployment();
     
     // Connect contracts
     await bb.setVault(vaultAddr);
     await bb.setMerkleTree(await merkleTree.getAddress());
     await merkleTree.authorise(bbAddr); // Authorize BB to insert commitments
-    await payouts.setMerkleTree(await merkleTree.getAddress());
-    await payouts.setVault(vaultAddr);
     await vault.setBugBountyProgram(bbAddr);
     await vault.setConfidentialPayouts(await payouts.getAddress());
     await vault.setDisputeResolver(signers[0].address);
@@ -134,12 +133,6 @@ describe("ConfidentialPayouts", function () {
     await expect(payouts.withdraw(ethers.keccak256(ethers.toUtf8Bytes("bad")), ethers.keccak256(ethers.randomBytes(32)), signers[3].address, 1000n, "0x")).to.be.revertedWith("Invalid root");
   });
 
-  it("updates merkle root", async () => {
-    const newRoot = ethers.keccak256(ethers.toUtf8Bytes("test"));
-    await payouts.updateMerkleRoot(newRoot);
-    expect(await payouts.currentRoot()).to.equal(newRoot);
-  });
-
   it("two different nullifiers can coexist — both withdrawals succeed", async () => {
     const bounty = 3_000n * DECIMALS_6;
     const nf1 = ethers.keccak256(ethers.toUtf8Bytes("nf-one"));
@@ -175,5 +168,44 @@ describe("ConfidentialPayouts", function () {
     await expect(
       payouts.withdraw(root, nf, signers[3].address, bounty, "0x")
     ).to.emit(payouts, "Withdrawal").withArgs(nf, root);
+  });
+
+  // ── Access Control Tests ──────────────────────────────────────
+
+  it("constructor reverts for zero bug bounty program", async () => {
+    await expect(
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, ethers.ZeroAddress, vaultAddr, await merkleTree.getAddress())
+    ).to.be.revertedWith("Zero bug bounty program");
+  });
+
+  it("constructor reverts for zero vault", async () => {
+    await expect(
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, ethers.ZeroAddress, await merkleTree.getAddress())
+    ).to.be.revertedWith("Zero vault");
+  });
+
+  it("constructor reverts for zero merkle tree", async () => {
+    await expect(
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, ethers.ZeroAddress)
+    ).to.be.revertedWith("Zero merkle tree");
+  });
+
+  it("updateMerkleRoot reverts for non-BugBountyProgram", async () => {
+    const newRoot = ethers.keccak256(ethers.toUtf8Bytes("test-root"));
+    await expect(
+      payouts.connect(signers[2]).updateMerkleRoot(newRoot)
+    ).to.be.revertedWith("Not bug bounty program");
+  });
+
+  it("updateMerkleRoot succeeds for BugBountyProgram", async () => {
+    const mockMerkle = await (await ethers.getContractFactory("BugBountyMerkleTree", {
+      libraries: { Hasher: await (await (await ethers.getContractFactory("Hasher")).deploy()).getAddress() }
+    })).deploy();
+    const newPayouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, signers[0].address, vaultAddr, await mockMerkle.getAddress());
+    const newRoot = ethers.keccak256(ethers.toUtf8Bytes("test-root"));
+    await expect(
+      newPayouts.connect(signers[0]).updateMerkleRoot(newRoot)
+    ).to.emit(newPayouts, "MerkleRootUpdated").withArgs(newRoot);
+    expect(await newPayouts.currentRoot()).to.equal(newRoot);
   });
 });
