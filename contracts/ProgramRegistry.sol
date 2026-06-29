@@ -6,6 +6,8 @@ import {BugBountyProgram} from "./BugBountyProgram.sol";
 import {BountyVault} from "./BountyVault.sol";
 import {ConfidentialPayouts} from "./ConfidentialPayouts.sol";
 import {DisputeResolver} from "./DisputeResolver.sol";
+import {BugBountyMerkleTree} from "./BugBountyMerkleTree.sol";
+import {IWhitehatReputation} from "./interfaces/IWhitehatReputation.sol";
 
 contract ProgramRegistry {
   enum ReputationTier {
@@ -29,6 +31,7 @@ contract ProgramRegistry {
     ReputationTier minTier;
     address bugBountyContract;
     address vaultContract;
+    address merkleTreeContract;
   }
 
   IERC20 public immutable cUSDT;
@@ -62,27 +65,61 @@ contract ProgramRegistry {
     BugBountyProgram bb = new BugBountyProgram(msg.sender, pid);
     BountyVault bv = new BountyVault(address(cUSDT), msg.sender, pid);
     ConfidentialPayouts cp = new ConfidentialPayouts(msg.sender, pid);
+    BugBountyMerkleTree merkleTree = new BugBountyMerkleTree();
     bb.setRegistry(address(this));
     bb.setVault(address(bv));
     bb.setReputation(reputation);
     bb.setDisputeResolver(address(disputeResolver));
+    bb.setMerkleTree(address(merkleTree));
     bv.setBugBountyProgram(address(bb));
     bv.setConfidentialPayouts(address(cp));
     bv.setDisputeResolver(address(disputeResolver));
     bv.setRegistry(address(this));
     cp.setVault(address(bv));
+    cp.setMerkleTree(address(merkleTree));
+    merkleTree.authorise(address(bb));
     disputeResolver.setProgramArbiters(pid, arbiters);
     if (pool > 0) cUSDT.transferFrom(msg.sender, address(bv), pool);
-    _programs[pid] =
-      BountyProgram(pid, name, desc, url, pool, 0, block.timestamp, true, msg.sender, tier, address(bb), address(bv));
+    _programs[pid] = BountyProgram(
+      pid,
+      name,
+      desc,
+      url,
+      pool,
+      0,
+      block.timestamp,
+      true,
+      msg.sender,
+      tier,
+      address(bb),
+      address(bv),
+      address(merkleTree)
+    );
     _adminPrograms[msg.sender].push(pid);
     emit ProgramCreated(pid, name, msg.sender);
   }
 
-  function canSubmit(uint256 pid, bytes32) external view returns (bool) {
+  function canSubmit(uint256 pid, bytes32 commitment) external view returns (bool) {
     BountyProgram storage p = _programs[pid];
     if (!p.active || p.totalPool == 0) return false;
+    
+    // Check reputation tier requirement
+    if (p.minTier != ReputationTier.Open) {
+      uint32 threshold = _tierToThreshold(p.minTier);
+      if (!IWhitehatReputation(reputation).meetsRequirement(commitment, threshold)) {
+        return false;
+      }
+    }
+    
     return true;
+  }
+  
+  function _tierToThreshold(ReputationTier tier) private pure returns (uint32) {
+    if (tier == ReputationTier.Bronze) return 50;
+    if (tier == ReputationTier.Silver) return 150;
+    if (tier == ReputationTier.Gold) return 400;
+    if (tier == ReputationTier.Elite) return 1000;
+    return 0; // Open
   }
 
   function updateProgram(uint256 pid, string calldata desc, ReputationTier tier, bool active) external {
@@ -116,6 +153,17 @@ contract ProgramRegistry {
     require(newAdmin != address(0), "Zero addr");
     address old = _programs[pid].admin;
     _programs[pid].admin = newAdmin;
+    
+    // Remove from old admin's array
+    uint256[] storage oldAdminPrograms = _adminPrograms[old];
+    for (uint256 i = 0; i < oldAdminPrograms.length; i++) {
+      if (oldAdminPrograms[i] == pid) {
+        oldAdminPrograms[i] = oldAdminPrograms[oldAdminPrograms.length - 1];
+        oldAdminPrograms.pop();
+        break;
+      }
+    }
+    
     _adminPrograms[newAdmin].push(pid);
     emit AdminTransferred(pid, old, newAdmin);
   }
@@ -140,9 +188,17 @@ contract ProgramRegistry {
   function getProgram(uint256 pid) external view returns (BountyProgram memory) {
     return _programs[pid];
   }
+  
+  function updateArbiters(uint256 pid, address[] calldata arbiters) external {
+    require(msg.sender == _programs[pid].admin, "Not admin");
+    require(arbiters.length >= 3, ">=3 arbiters");
+    disputeResolver.updateProgramArbiters(pid, arbiters);
+    emit ArbitersUpdated(pid, arbiters);
+  }
 
   event ProgramCreated(uint256 indexed pid, string name, address indexed admin);
   event ProgramUpdated(uint256 indexed pid, bool active);
   event PoolToppedUp(uint256 indexed pid, address indexed by, uint256 amount);
   event AdminTransferred(uint256 indexed pid, address indexed oldAdmin, address indexed newAdmin);
+  event ArbitersUpdated(uint256 indexed pid, address[] arbiters);
 }
