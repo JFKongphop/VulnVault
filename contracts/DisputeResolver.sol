@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FHE, euint8, ebool, externalEuint8} from "@fhevm/solidity/lib/FHE.sol";
+import {FHE, euint8, euint64, ebool, externalEuint8, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
 import {IBugBountyProgram} from "./interfaces/IBugBountyProgram.sol";
@@ -203,35 +203,26 @@ contract DisputeResolver is ZamaEthereumConfig {
 
   /// @notice Execute dispute outcome based on vote result.
   ///         Admin must check off-chain decrypted vote result before calling.
-  ///         If vote favors reporter: bountyAmount MUST be > 0
-  ///         If vote favors admin: bountyAmount MUST be 0
+  ///         If reporter won, admin must then call approveReport() separately with encrypted bounty.
+  ///         If admin won, unfreezes report and unlocks vault funds.
   /// @param disputeId The dispute ID
   /// @param reporterWon The decrypted vote result (true = reporter won, false = admin won)
-  /// @param bountyAmount Bounty to pay if reporter won (must be > 0 if reporterWon)
-  /// @param severity Severity level if reporter won
   function executeOutcome(
     uint256 disputeId, 
-    bool reporterWon,
-    uint256 bountyAmount, 
-    uint8 severity
+    bool reporterWon
   ) external onlyProgramAdmin(disputeId) {
     Dispute storage d = _disputes[disputeId];
     require(d.status == DisputeStatus.Resolved, "Not yet resolved");
 
     if (reporterWon) {
-      // Vote result: Reporter wins → Admin MUST approve with bounty
-      require(bountyAmount > 0, "Bounty required if reporter won");
-      require(severity > 0, "Severity required if reporter won");
-      
-      IBugBountyProgram(bugBountyProgram).overrideApprove(d.submissionId, bountyAmount, severity);
+      // Vote result: Reporter wins → Unfreeze report for admin to approve
+      IBugBountyProgram(bugBountyProgram).unfreezeReport(d.submissionId);
       if (reputation != address(0)) {
         IWhitehatReputation(reputation).incrementScore(d.reporterCommitment, 2, 0);
       }
       emit OutcomeExecuted(disputeId, true);
     } else {
-      // Vote result: Admin wins → No payment allowed
-      require(bountyAmount == 0, "Cannot pay bounty if admin won");
-      
+      // Vote result: Admin wins → No payment
       IBugBountyProgram(bugBountyProgram).unfreezeReport(d.submissionId);
       if (address(vault) != address(0)) {
         vault.unlockFunds(d.programId, d.submissionId);

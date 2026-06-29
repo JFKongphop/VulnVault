@@ -96,7 +96,7 @@ contract ConfidentialPayouts is IConfidentialPayouts {
     //   "I know (secret, nullifier) such that:
     //     a) keccak256(secret, nullifier) = commitment
     //     b) commitment is an approved leaf in the Merkle tree with `root`
-    //     c) nullifierHash = keccak256(nullifier)
+    //     c) nullifierHash = keccak256(nullifier)"
     //     d) amount matches the approved leaf"
     bool proofValid = true; // placeholder
     require(proofValid, "Invalid proof");
