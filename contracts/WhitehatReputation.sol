@@ -90,6 +90,16 @@ contract WhitehatReputation is ZamaEthereumConfig {
   // ── Threshold Gate (Async)
   // ────────────────────────────────────────────
 
+  /// @notice Check whether a commitment meets a minimum reputation threshold.
+  /// @dev Synchronous best-effort check. Returns true for Open tier (0).
+  ///      For encrypted scores, can only verify commitment is registered.
+  ///      Use requestMeetsRequirement for actual FHE threshold check.
+  /// @return True if minReputation is 0, or commitment is registered (best-effort).
+  function meetsRequirement(bytes32 commitment, uint32 minReputation) external view returns (bool) {
+    if (minReputation == 0) return true; // Open tier
+    return isRegistered[commitment]; // Best-effort: at least has some reputation
+  }
+
   /// @notice Request a threshold check. Result is made publicly decryptable.
   ///         Caller decrypts the returned handle off-chain via the oracle.
   function requestMeetsRequirement(bytes32 commitment, uint32 minReputation)
