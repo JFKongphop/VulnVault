@@ -83,24 +83,23 @@ describe("FullFlow Integration", function () {
     
     const resolver = await (await ethers.getContractFactory("DisputeResolver")).deploy(); await resolver.waitForDeployment();
     const bb = await (await ethers.getContractFactory("BugBountyProgram")).deploy(s[1].address, 0); await bb.waitForDeployment();
+    const bbAddr = await bb.getAddress();
     const vault = await (await ethers.getContractFactory("BountyVault")).deploy(cUSDTAddr, s[1].address, 0); await vault.waitForDeployment();
     const vaultAddr = await vault.getAddress();
-    const payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(s[1].address, 0); await payouts.waitForDeployment();
     const hasher = await (await ethers.getContractFactory("Hasher")).deploy(); await hasher.waitForDeployment();
     const merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
       libraries: { Hasher: await hasher.getAddress() }
     })).deploy(); await merkleTree.waitForDeployment();
+    const payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(0, bbAddr, vaultAddr, await merkleTree.getAddress()); await payouts.waitForDeployment();
 
     await bb.setVault(vaultAddr);
     await bb.setMerkleTree(await merkleTree.getAddress());
-    await merkleTree.authorise(await bb.getAddress());
+    await merkleTree.authorise(bbAddr);
     await bb.setDisputeResolver(await resolver.getAddress());
-    await vault.setBugBountyProgram(await bb.getAddress());
+    await vault.setBugBountyProgram(bbAddr);
     await vault.setConfidentialPayouts(await payouts.getAddress());
     await vault.setDisputeResolver(await resolver.getAddress());
-    await payouts.setMerkleTree(await merkleTree.getAddress());
-    await payouts.setVault(vaultAddr);
-    await resolver.setBugBountyProgram(await bb.getAddress());
+    await resolver.setBugBountyProgram(bbAddr);
     await resolver.setProgramArbiters(0, [s[3].address, s[4].address, s[5].address]);
 
     // Mint underlying tokens and wrap them to confidential
@@ -116,7 +115,6 @@ describe("FullFlow Integration", function () {
     await cUSDT.connect(s[1])["confidentialTransferAndCall(address,bytes32,bytes,bytes)"](vaultAddr, depositHandles[0], depositProof, "0x");
 
     // Submit
-    const bbAddr = await bb.getAddress();
     const sid = await fheSubmit(
       bb,
       bbAddr,
@@ -228,13 +226,13 @@ describe("FullFlow Integration", function () {
       bbAddr = await bb.getAddress();
       vault = await (await ethers.getContractFactory("BountyVault")).deploy(cUSDTAddr, s[1].address, PID); await vault.waitForDeployment();
       vaultAddr = await vault.getAddress();
-      payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(s[1].address, PID); await payouts.waitForDeployment();
       const hasher = await (await ethers.getContractFactory("Hasher")).deploy(); await hasher.waitForDeployment();
       merkleTree = await (await ethers.getContractFactory("BugBountyMerkleTree", {
         libraries: { Hasher: await hasher.getAddress() }
       })).deploy(); await merkleTree.waitForDeployment();
+      payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, await merkleTree.getAddress()); await payouts.waitForDeployment();
       resolver = await (await ethers.getContractFactory("DisputeResolver")).deploy(); await resolver.waitForDeployment();
-      reputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy(); await reputation.waitForDeployment();
+      reputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy(bbAddr); await reputation.waitForDeployment();
       reputationAddr = await reputation.getAddress();
 
       await bb.setVault(vaultAddr);
@@ -245,11 +243,8 @@ describe("FullFlow Integration", function () {
       await vault.setBugBountyProgram(bbAddr);
       await vault.setConfidentialPayouts(await payouts.getAddress());
       await vault.setDisputeResolver(await resolver.getAddress());
-      await payouts.setMerkleTree(await merkleTree.getAddress());
-      await payouts.setVault(vaultAddr);
       await resolver.setBugBountyProgram(bbAddr);
       await resolver.setProgramArbiters(PID, [s[3].address, s[4].address, s[5].address]);
-      await reputation.setBugBountyProgram(bbAddr);
 
       // Mint underlying tokens and wrap them to confidential
       await underlyingUSDT.mint(s[1].address, 100_000n * D6);
