@@ -999,9 +999,15 @@ describe("BugBountyProgram", function () {
       // Admin reviews and approves with encrypted notes
       await bb.connect(signers[1]).reviewReport(submissionId1);
       const testNotes = ethers.hexlify(ethers.toUtf8Bytes("Great work!"));
+      
+      // Encrypt bounty amount
+      const inp = fhevm.createEncryptedInput(bbAddr, signers[1].address);
+      inp.add64(1000);
+      const { handles, inputProof } = await inp.encrypt();
+      
       await bb
         .connect(signers[1])
-        .approveReport(submissionId1, 1000, 2, testNotes);
+        .approveReport(submissionId1, handles[0], 2, inputProof, testNotes);
 
       // Admin can access notes
       const adminView = await bb.connect(signers[1]).getAdminNotes(submissionId1);
