@@ -52,6 +52,17 @@ contract BountyVault is ZamaEthereumConfig, IERC7984Receiver, IBountyVault {
   VaultState internal _state;
   mapping(bytes32 => euint64) public lockedForReport;  // Encrypted per-report locks
 
+  // ── Events
+  // ─────────────────────────────────────────────────────────────
+
+  event Deposited(uint256 indexed programId, uint256 amount);
+  event FundsLocked(uint256 indexed programId, bytes32 indexed submissionId, uint256 amount);
+  event BountyReleased(uint256 indexed programId, bytes32 indexed submissionId, uint256 amount);
+  event FundsUnlocked(uint256 indexed programId, bytes32 indexed submissionId, uint256 amount);
+  event WithdrawalInitiated(uint256 indexed programId, uint256 amount, uint256 readyAt);
+  event WithdrawalExecuted(uint256 indexed programId, uint256 amount);
+  event WithdrawalCancelled(uint256 indexed programId, uint256 amount);
+
   // ── Modifiers
   // ──────────────────────────────────────────────────────────
 
@@ -397,15 +408,4 @@ contract BountyVault is ZamaEthereumConfig, IERC7984Receiver, IBountyVault {
   function getLockedForReport(bytes32 submissionId) external view returns (euint64) {
     return lockedForReport[submissionId];
   }
-
-  // ── Events
-  // ─────────────────────────────────────────────────────────────
-
-  event Deposited(uint256 indexed programId, uint256 amount);
-  event FundsLocked(uint256 indexed programId, bytes32 indexed submissionId, uint256 amount);
-  event BountyReleased(uint256 indexed programId, bytes32 indexed submissionId, uint256 amount);
-  event FundsUnlocked(uint256 indexed programId, bytes32 indexed submissionId, uint256 amount);
-  event WithdrawalInitiated(uint256 indexed programId, uint256 amount, uint256 readyAt);
-  event WithdrawalExecuted(uint256 indexed programId, uint256 amount);
-  event WithdrawalCancelled(uint256 indexed programId, uint256 amount);
 }
