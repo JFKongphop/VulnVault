@@ -11,11 +11,10 @@ describe("WhitehatReputation", function () {
 
   beforeEach(async function () {
     if (!fhevm.isMock) this.skip();
-    reputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy();
+    // signers[0] acts as BugBountyProgram
+    reputation = await (await ethers.getContractFactory("WhitehatReputation")).deploy(signers[0].address);
     await reputation.waitForDeployment();
     reputationAddr = await reputation.getAddress();
-    // signers[0] acts as BugBountyProgram
-    await reputation.setBugBountyProgram(signers[0].address);
   });
 
   // ── Helper: grant decrypt access then read handle as hex ──────────────────
@@ -117,6 +116,61 @@ describe("WhitehatReputation", function () {
     const h2 = await scoreHandleFor(C2);
     expect(await fhevm.userDecryptEuint(FhevmType.euint32, h1, reputationAddr, signers[0])).to.equal(100n);
     expect(await fhevm.userDecryptEuint(FhevmType.euint32, h2, reputationAddr, signers[0])).to.equal(10n);
+  });
+
+  // ── Security & Access Control Tests ──────────────────────────────────────
+
+  it("constructor reverts for zero address", async () => {
+    await expect(
+      (await ethers.getContractFactory("WhitehatReputation")).deploy(ethers.ZeroAddress)
+    ).to.be.revertedWith("Zero address");
+  });
+
+  it("reverts on invalid severity", async () => {
+    await expect(reputation.incrementScore(C1, 99, 0)).to.be.revertedWith("Invalid severity");
+  });
+
+  // ── Helper Functions Tests ──────────────────────────────────────────────
+
+  it("getAllTierThresholds returns correct values", async () => {
+    const tiers = await reputation.getAllTierThresholds();
+    expect(tiers[0]).to.equal(0);     // Open
+    expect(tiers[1]).to.equal(50);    // Bronze
+    expect(tiers[2]).to.equal(150);   // Silver
+    expect(tiers[3]).to.equal(400);   // Gold
+    expect(tiers[4]).to.equal(1000);  // Elite
+  });
+
+  it("getSeverityPoints returns correct values", async () => {
+    const points = await reputation.getSeverityPoints();
+    expect(points[0]).to.equal(10);   // Low
+    expect(points[1]).to.equal(25);   // Medium
+    expect(points[2]).to.equal(50);   // High
+    expect(points[3]).to.equal(100);  // Critical
+  });
+
+  it("estimatePointsForReports calculates correctly", async () => {
+    const severities = [0, 1, 2, 3]; // Low, Medium, High, Critical
+    const total = await reputation.estimatePointsForReports(severities);
+    expect(total).to.equal(10 + 25 + 50 + 100); // 185
+  });
+
+  it("getBatchApprovedCounts returns multiple counts", async () => {
+    await reputation.incrementScore(C1, 1, 0);
+    await reputation.incrementScore(C1, 2, 0);
+    await reputation.incrementScore(C2, 3, 0);
+    
+    const counts = await reputation.getBatchApprovedCounts([C1, C2]);
+    expect(counts[0]).to.equal(2);
+    expect(counts[1]).to.equal(1);
+  });
+
+  it("getBatchRegistrationStatus returns multiple statuses", async () => {
+    await reputation.incrementScore(C1, 1, 0);
+    
+    const statuses = await reputation.getBatchRegistrationStatus([C1, C2]);
+    expect(statuses[0]).to.be.true;
+    expect(statuses[1]).to.be.false;
   });
 });
 
