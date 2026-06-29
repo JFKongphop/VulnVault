@@ -41,6 +41,17 @@ contract WhitehatReputation is ZamaEthereumConfig {
 
   address public bugBountyProgram;
 
+  // ── Events
+  // ────────────────────────────────────────────────────────────
+
+  event ScoreUpdated(bytes32 indexed commitment, uint32 approvedCount);
+  event TierCheckRequested(bytes32 indexed commitment, uint8 tier, bytes32 qualifiesHandle);
+  event RequirementCheckRequested(
+    bytes32 indexed commitment, 
+    uint32 minReputation, 
+    bytes32 qualifiesHandle
+  );
+
   // ── Modifiers
   // ─────────────────────────────────────────────────────────
 
@@ -52,17 +63,19 @@ contract WhitehatReputation is ZamaEthereumConfig {
   // ── Constructor
   // ───────────────────────────────────────────────────────
 
-  constructor() {}
-
-  function setBugBountyProgram(address addr) external {
-    require(bugBountyProgram == address(0), "Already set");
-    bugBountyProgram = addr;
+  constructor(address _bugBountyProgram) {
+    require(_bugBountyProgram != address(0), "Zero address");
+    bugBountyProgram = _bugBountyProgram;
   }
 
   // ── Core: Increment Score
   // ─────────────────────────────────────────────
 
-  function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external onlyBugBountyProgram {
+  function incrementScore(
+    bytes32 commitment, 
+    uint8 severity, 
+    uint256 bountyAmount
+  ) external onlyBugBountyProgram {
     if (!isRegistered[commitment]) {
       reputationScores[commitment] = FHE.asEuint32(0);
       totalEarnings[commitment] = FHE.asEuint64(uint64(0));
@@ -166,6 +179,37 @@ contract WhitehatReputation is ZamaEthereumConfig {
     return approvedReportCount[commitment];
   }
 
+  // ── Helper Functions for UX
+  // ──────────────────────────────────────────────────────
+
+  function getAllTierThresholds() external pure returns (uint32[5] memory) {
+    return [0, TIER_BRONZE, TIER_SILVER, TIER_GOLD, TIER_ELITE];
+  }
+
+  function getSeverityPoints() external pure returns (uint32[4] memory) {
+    return [POINTS_LOW, POINTS_MEDIUM, POINTS_HIGH, POINTS_CRITICAL];
+  }
+
+  function estimatePointsForReports(uint8[] calldata severities) external pure returns (uint32 total) {
+    for (uint256 i = 0; i < severities.length; i++) {
+      total += _severityToPoints(severities[i]);
+    }
+  }
+
+  function getBatchApprovedCounts(bytes32[] calldata commitments) external view returns (uint32[] memory counts) {
+    counts = new uint32[](commitments.length);
+    for (uint256 i = 0; i < commitments.length; i++) {
+      counts[i] = approvedReportCount[commitments[i]];
+    }
+  }
+
+  function getBatchRegistrationStatus(bytes32[] calldata commitments) external view returns (bool[] memory statuses) {
+    statuses = new bool[](commitments.length);
+    for (uint256 i = 0; i < commitments.length; i++) {
+      statuses[i] = isRegistered[commitments[i]];
+    }
+  }
+
   // ── Internal
   // ──────────────────────────────────────────────────────────
 
@@ -174,7 +218,7 @@ contract WhitehatReputation is ZamaEthereumConfig {
     if (severity == 1) return POINTS_MEDIUM;
     if (severity == 2) return POINTS_HIGH;
     if (severity == 3) return POINTS_CRITICAL;
-    return 0;
+    revert("Invalid severity");
   }
 
   function _checkTierUnlock(bytes32 commitment) internal {
@@ -185,11 +229,4 @@ contract WhitehatReputation is ZamaEthereumConfig {
       emit TierCheckRequested(commitment, i + 1, ebool.unwrap(crossed));
     }
   }
-
-  // ── Events
-  // ────────────────────────────────────────────────────────────
-
-  event ScoreUpdated(bytes32 indexed commitment, uint32 approvedCount);
-  event TierCheckRequested(bytes32 indexed commitment, uint8 tier, bytes32 qualifiesHandle);
-  event RequirementCheckRequested(bytes32 indexed commitment, uint32 minReputation, bytes32 qualifiesHandle);
 }
