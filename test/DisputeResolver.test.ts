@@ -988,5 +988,52 @@ describe("DisputeResolver", function () {
       .to.emit(newResolver, "ArbitersSet")
       .withArgs(0, arbiterAddresses);
   });
+
+  it("updateProgramArbiters allows updating arbiters for existing program", async () => {
+    const newArbiters = [signers[6].address, signers[7].address, signers[8].address];
+    
+    await expect(resolver.updateProgramArbiters(0, newArbiters))
+      .to.emit(resolver, "ArbitersSet")
+      .withArgs(0, newArbiters);
+    
+    // Verify arbiters were actually updated
+    const firstArbiter = await resolver.programArbiters(0, 0);
+    expect(firstArbiter).to.equal(signers[6].address);
+  });
+
+  it("updateProgramArbiters reverts if program not initialized", async () => {
+    const newArbiters = [signers[6].address, signers[7].address, signers[8].address];
+    
+    await expect(
+      resolver.updateProgramArbiters(999, newArbiters)
+    ).to.be.revertedWith("Not initialized");
+  });
+
+  it("updateProgramArbiters reverts with <3 arbiters", async () => {
+    const twoArbiters = [signers[6].address, signers[7].address];
+    
+    await expect(
+      resolver.updateProgramArbiters(0, twoArbiters)
+    ).to.be.revertedWith("Need at least 3 arbiters");
+  });
+
+  it("updateProgramArbiters replaces all arbiters completely", async () => {
+    // Initially has signers[3,4,5]
+    const initialFirst = await resolver.programArbiters(0, 0);
+    expect(initialFirst).to.equal(signers[3].address);
+    
+    // Update to signers[6,7,8]
+    const newArbiters = [signers[6].address, signers[7].address, signers[8].address];
+    await resolver.updateProgramArbiters(0, newArbiters);
+    
+    // Verify all arbiters were replaced
+    const first = await resolver.programArbiters(0, 0);
+    const second = await resolver.programArbiters(0, 1);
+    const third = await resolver.programArbiters(0, 2);
+    
+    expect(first).to.equal(signers[6].address);
+    expect(second).to.equal(signers[7].address);
+    expect(third).to.equal(signers[8].address);
+  });
 });
 
