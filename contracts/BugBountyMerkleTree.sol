@@ -18,6 +18,9 @@ contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
   uint256 private constant _FIELD =
     21_888_242_871_839_275_222_246_405_745_257_275_088_548_364_400_416_034_343_698_204_186_575_808_495_617;
 
+  event Authorised(address indexed account);
+  event Deauthorised(address indexed account);
+
   modifier onlyAuthorised() {
     require(authorised[msg.sender] || msg.sender == owner, "Not authorised");
     _;
@@ -30,6 +33,13 @@ contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
   function authorise(address account) external {
     require(msg.sender == owner, "Not owner");
     authorised[account] = true;
+    emit Authorised(account);
+  }
+
+  function deauthorise(address account) external {
+    require(msg.sender == owner, "Not owner");
+    authorised[account] = false;
+    emit Deauthorised(account);
   }
 
   /// @dev Reduce an arbitrary bytes32 into a BN254 field element so
@@ -55,7 +65,7 @@ contract BugBountyMerkleTree is MerkleTree, IMerkleTree {
 
   /// @inheritdoc IMerkleTree
   function commitments(bytes32 commitment) external view override returns (bool) {
-    return _commitments[commitment];
+    return _commitments[_toField(commitment)];
   }
 
   /// @inheritdoc IMerkleTree
