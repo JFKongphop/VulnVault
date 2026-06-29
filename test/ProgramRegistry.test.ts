@@ -19,7 +19,14 @@ describe("ProgramRegistry", function () {
     resolver = await (await ethers.getContractFactory("DisputeResolver")).deploy();
     await resolver.waitForDeployment();
     await resolver.setBugBountyProgram(signers[0].address);
-    registry = await (await ethers.getContractFactory("ProgramRegistry")).deploy(
+    
+    // Deploy Hasher library for MerkleTree
+    const hasher = await (await ethers.getContractFactory("Hasher")).deploy();
+    await hasher.waitForDeployment();
+    
+    registry = await (await ethers.getContractFactory("ProgramRegistry", {
+      libraries: { Hasher: await hasher.getAddress() },
+    })).deploy(
       await cUSDT.getAddress(), await reputation.getAddress(), await resolver.getAddress()
     );
     await registry.waitForDeployment();
@@ -35,6 +42,8 @@ describe("ProgramRegistry", function () {
     expect(p.name).to.equal("Uniswap Bug Bounty");
     expect(p.active).to.be.true;
     expect(p.bugBountyContract).to.not.equal(ethers.ZeroAddress);
+    expect(p.vaultContract).to.not.equal(ethers.ZeroAddress);
+    expect(p.merkleTreeContract).to.not.equal(ethers.ZeroAddress);
   });
 
   it("creates program with initial pool", async () => {
@@ -113,5 +122,79 @@ describe("ProgramRegistry", function () {
     expect(s1Programs.length).to.equal(2);
     expect(s1Programs[0]).to.equal(0n);
     expect(s1Programs[1]).to.equal(2n);
+  });
+
+  it("transferAdmin removes program from old admin's list", async () => {
+    await registry.connect(signers[1]).createProgram("P1", "D", "https://p.com", 0, [signers[3].address, signers[4].address, signers[5].address], 0);
+    await registry.connect(signers[1]).createProgram("P2", "D", "https://p.com", 0, [signers[3].address, signers[4].address, signers[5].address], 0);
+    
+    const beforeTransfer = await registry.getAdminPrograms(signers[1].address);
+    expect(beforeTransfer.length).to.equal(2);
+    
+    await registry.connect(signers[1]).transferAdmin(0, signers[2].address);
+    
+    const afterOld = await registry.getAdminPrograms(signers[1].address);
+    const afterNew = await registry.getAdminPrograms(signers[2].address);
+    
+    expect(afterOld.length).to.equal(1);
+    expect(afterOld[0]).to.equal(1n); // Only P2 remains
+    expect(afterNew.length).to.equal(1);
+    expect(afterNew[0]).to.equal(0n); // P1 transferred
+  });
+
+  it("updateArbiters allows admin to update arbiters", async () => {
+    await registry.connect(signers[1]).createProgram("P", "D", "https://p.com", 0, [signers[3].address, signers[4].address, signers[5].address], 0);
+    
+    const newArbiters = [signers[6].address, signers[7].address, signers[8].address];
+    await expect(
+      registry.connect(signers[1]).updateArbiters(0, newArbiters)
+    ).to.emit(registry, "ArbitersUpdated").withArgs(0, newArbiters);
+    
+    // Verify arbiters were updated in DisputeResolver
+    const arbiters = await resolver.programArbiters(0, 0);
+    expect(arbiters).to.equal(signers[6].address);
+  });
+
+  it("updateArbiters reverts for non-admin", async () => {
+    await registry.connect(signers[1]).createProgram("P", "D", "https://p.com", 0, [signers[3].address, signers[4].address, signers[5].address], 0);
+    
+    const newArbiters = [signers[6].address, signers[7].address, signers[8].address];
+    await expect(
+      registry.connect(signers[2]).updateArbiters(0, newArbiters)
+    ).to.be.revertedWith("Not admin");
+  });
+
+  it("updateArbiters reverts with <3 arbiters", async () => {
+    await registry.connect(signers[1]).createProgram("P", "D", "https://p.com", 0, [signers[3].address, signers[4].address, signers[5].address], 0);
+    
+    await expect(
+      registry.connect(signers[1]).updateArbiters(0, [signers[6].address])
+    ).to.be.revertedWith(">=3 arbiters");
+  });
+
+  it("canSubmit checks reputation tier for Bronze tier programs", async () => {
+    await cUSDT.mint(signers[1].address, 50_000n * DECIMALS_6);
+    await cUSDT.connect(signers[1]).approve(registryAddr, 50_000n * DECIMALS_6);
+    
+    // Create Bronze tier program (tier = 1)
+    await registry.connect(signers[1]).createProgram("P", "D", "https://p.com", 1, [signers[3].address, signers[4].address, signers[5].address], 1000);
+    
+    const testCommitment = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    
+    // Should return false for unregistered commitment (no reputation)
+    expect(await registry.canSubmit(0, testCommitment)).to.be.false;
+  });
+
+  it("canSubmit returns true for Open tier programs regardless of reputation", async () => {
+    await cUSDT.mint(signers[1].address, 50_000n * DECIMALS_6);
+    await cUSDT.connect(signers[1]).approve(registryAddr, 50_000n * DECIMALS_6);
+    
+    // Create Open tier program (tier = 0)
+    await registry.connect(signers[1]).createProgram("P", "D", "https://p.com", 0, [signers[3].address, signers[4].address, signers[5].address], 1000);
+    
+    const testCommitment = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    
+    // Should return true even for unregistered commitment
+    expect(await registry.canSubmit(0, testCommitment)).to.be.true;
   });
 });
