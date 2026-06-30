@@ -37,6 +37,7 @@ contract ProgramRegistry {
 
   IERC7984 public immutable cUSDT;
   address public reputation;
+  address public verifier;
   DisputeResolver public disputeResolver;
 
   mapping(uint256 => BountyProgram) private _programs;
@@ -49,10 +50,11 @@ contract ProgramRegistry {
   event AdminTransferred(uint256 indexed pid, address indexed oldAdmin, address indexed newAdmin);
   event ArbitersUpdated(uint256 indexed pid, address[] arbiters);
 
-  constructor(address c, address r, address d) {
+  constructor(address c, address r, address d, address v) {
     cUSDT = IERC7984(c);
     reputation = r;
     disputeResolver = DisputeResolver(d);
+    verifier = v;
   }
 
   function createProgram(
@@ -72,7 +74,7 @@ contract ProgramRegistry {
     BugBountyProgram bb = new BugBountyProgram(msg.sender, pid);
     BountyVault bv = new BountyVault(address(cUSDT), msg.sender, pid);
     BugBountyMerkleTree merkleTree = new BugBountyMerkleTree();
-    ConfidentialPayouts cp = new ConfidentialPayouts(pid, address(bb), address(bv), address(merkleTree));
+    ConfidentialPayouts cp = new ConfidentialPayouts(pid, address(bb), address(bv), address(merkleTree), verifier);
     bb.setRegistry(address(this));
     bb.setVault(address(bv));
     bb.setReputation(reputation);
