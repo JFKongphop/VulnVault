@@ -32,6 +32,6 @@ frontend-stye
 # But keep README.md
 !README.md
 
-report.txt
+*.txt
 
 template
