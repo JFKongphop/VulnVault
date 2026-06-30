@@ -2,6 +2,11 @@ import { ethers, fhevm } from "hardhat";
 import { expect } from "chai";
 const DECIMALS_6 = 1_000_000n;
 
+// Dummy proof parameters for tests (actual ZK proof verification tested in BountyClaimVerifier.test.ts)
+const DUMMY_PA: [bigint, bigint] = [0n, 0n];
+const DUMMY_PB: [[bigint, bigint], [bigint, bigint]] = [[0n, 0n], [0n, 0n]];
+const DUMMY_PC: [bigint, bigint] = [0n, 0n];
+
 describe("ConfidentialPayouts", function () {
   let signers: any, payouts: any, merkleTree: any, underlyingUSDT: any, cUSDT: any, cUSDTAddr: string, vault: any, vaultAddr: string;
   let bb: any, bbAddr: string;
@@ -37,7 +42,11 @@ describe("ConfidentialPayouts", function () {
     })).deploy();
     await merkleTree.waitForDeployment();
 
-    payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, await merkleTree.getAddress());
+    // Use MockBountyClaimVerifier for tests (real ZK verification tested in BountyClaimVerifier.test.ts)
+    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
+    await verifier.waitForDeployment();
+
+    payouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, await merkleTree.getAddress(), await verifier.getAddress());
     await payouts.waitForDeployment();
     
     // Connect contracts
@@ -105,7 +114,7 @@ describe("ConfidentialPayouts", function () {
     await merkleTree.insertApprovedLeaf(leaf);
     const root = await merkleTree.getRoot();
     // Just verify withdrawal succeeds - balance is encrypted (euint64)
-    await payouts.withdraw(root, nullifier, signers[3].address, bounty, "0x");
+    await payouts.withdraw(root, nullifier, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
   });
 
   it("marks nullifier as spent", async () => {
@@ -114,7 +123,7 @@ describe("ConfidentialPayouts", function () {
     await lockFundsViaBB(nf, bounty);
     const leaf = ethers.keccak256(ethers.solidityPacked(["bytes32","uint256","uint256"], [ethers.keccak256(ethers.randomBytes(32)), bounty, Math.floor(Date.now()/1000)]));
     await merkleTree.insertApprovedLeaf(leaf);
-    await payouts.withdraw(await merkleTree.getRoot(), nf, signers[3].address, bounty, "0x");
+    await payouts.withdraw(await merkleTree.getRoot(), nf, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     expect(await payouts.isNullifierSpent(nf)).to.be.true;
   });
 
@@ -125,12 +134,12 @@ describe("ConfidentialPayouts", function () {
     const leaf = ethers.keccak256(ethers.solidityPacked(["bytes32","uint256","uint256"], [ethers.keccak256(ethers.randomBytes(32)), bounty, Math.floor(Date.now()/1000)]));
     await merkleTree.insertApprovedLeaf(leaf);
     const root = await merkleTree.getRoot();
-    await payouts.withdraw(root, nf2, signers[3].address, bounty, "0x");
-    await expect(payouts.withdraw(root, nf2, signers[4].address, bounty, "0x")).to.be.revertedWith("Already withdrawn");
+    await payouts.withdraw(root, nf2, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
+    await expect(payouts.withdraw(root, nf2, signers[4].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC)).to.be.revertedWith("Already withdrawn");
   });
 
   it("reverts invalid root", async () => {
-    await expect(payouts.withdraw(ethers.keccak256(ethers.toUtf8Bytes("bad")), ethers.keccak256(ethers.randomBytes(32)), signers[3].address, 1000n, "0x")).to.be.revertedWith("Invalid root");
+    await expect(payouts.withdraw(ethers.keccak256(ethers.toUtf8Bytes("bad")), ethers.keccak256(ethers.randomBytes(32)), signers[3].address, 1000n, DUMMY_PA, DUMMY_PB, DUMMY_PC)).to.be.revertedWith("Invalid root");
   });
 
   it("two different nullifiers can coexist — both withdrawals succeed", async () => {
@@ -143,8 +152,8 @@ describe("ConfidentialPayouts", function () {
     await merkleTree.insertApprovedLeaf(nf2);
     const root = await merkleTree.getRoot();
     // Note: Can't check encrypted balances, just verify both withdrawals succeed
-    await payouts.withdraw(root, nf1, signers[3].address, bounty, "0x");
-    await payouts.withdraw(root, nf2, signers[4].address, bounty, "0x");
+    await payouts.withdraw(root, nf1, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
+    await payouts.withdraw(root, nf2, signers[4].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     // Both withdrawals succeeded - balances are encrypted (euint64)
   });
 
@@ -155,7 +164,7 @@ describe("ConfidentialPayouts", function () {
     await merkleTree.insertApprovedLeaf(nf);
     const root = await merkleTree.getRoot();
     expect(await payouts.isNullifierSpent(nf)).to.be.false;
-    await payouts.withdraw(root, nf, signers[3].address, bounty, "0x");
+    await payouts.withdraw(root, nf, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     expect(await payouts.isNullifierSpent(nf)).to.be.true;
   });
 
@@ -166,28 +175,37 @@ describe("ConfidentialPayouts", function () {
     await merkleTree.insertApprovedLeaf(nf);
     const root = await merkleTree.getRoot();
     await expect(
-      payouts.withdraw(root, nf, signers[3].address, bounty, "0x")
+      payouts.withdraw(root, nf, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC)
     ).to.emit(payouts, "Withdrawal").withArgs(nf, root);
   });
 
   // ── Access Control Tests ──────────────────────────────────────
 
   it("constructor reverts for zero bug bounty program", async () => {
+    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
     await expect(
-      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, ethers.ZeroAddress, vaultAddr, await merkleTree.getAddress())
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, ethers.ZeroAddress, vaultAddr, await merkleTree.getAddress(), await verifier.getAddress())
     ).to.be.revertedWith("Zero bug bounty program");
   });
 
   it("constructor reverts for zero vault", async () => {
+    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
     await expect(
-      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, ethers.ZeroAddress, await merkleTree.getAddress())
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, ethers.ZeroAddress, await merkleTree.getAddress(), await verifier.getAddress())
     ).to.be.revertedWith("Zero vault");
   });
 
   it("constructor reverts for zero merkle tree", async () => {
+    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
     await expect(
-      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, ethers.ZeroAddress)
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, ethers.ZeroAddress, await verifier.getAddress())
     ).to.be.revertedWith("Zero merkle tree");
+  });
+
+  it("constructor reverts for zero verifier", async () => {
+    await expect(
+      (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, await merkleTree.getAddress(), ethers.ZeroAddress)
+    ).to.be.revertedWith("Zero verifier");
   });
 
   it("updateMerkleRoot reverts for non-BugBountyProgram", async () => {
@@ -201,7 +219,8 @@ describe("ConfidentialPayouts", function () {
     const mockMerkle = await (await ethers.getContractFactory("BugBountyMerkleTree", {
       libraries: { Hasher: await (await (await ethers.getContractFactory("Hasher")).deploy()).getAddress() }
     })).deploy();
-    const newPayouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, signers[0].address, vaultAddr, await mockMerkle.getAddress());
+    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
+    const newPayouts = await (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, signers[0].address, vaultAddr, await mockMerkle.getAddress(), await verifier.getAddress());
     const newRoot = ethers.keccak256(ethers.toUtf8Bytes("test-root"));
     await expect(
       newPayouts.connect(signers[0]).updateMerkleRoot(newRoot)
