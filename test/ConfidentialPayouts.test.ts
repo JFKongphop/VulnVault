@@ -1,8 +1,11 @@
 import { ethers, fhevm } from "hardhat";
 import { expect } from "chai";
+
 const DECIMALS_6 = 1_000_000n;
 
-// Dummy proof parameters for tests (actual ZK proof verification tested in BountyClaimVerifier.test.ts)
+// Dummy proof parameters for withdrawal tests
+// Real ZK proof verification is thoroughly tested in BountyClaimVerifier.test.ts
+// These tests focus on ConfidentialPayouts business logic (nullifier tracking, access control, etc.)
 const DUMMY_PA: [bigint, bigint] = [0n, 0n];
 const DUMMY_PB: [[bigint, bigint], [bigint, bigint]] = [[0n, 0n], [0n, 0n]];
 const DUMMY_PC: [bigint, bigint] = [0n, 0n];
@@ -42,7 +45,7 @@ describe("ConfidentialPayouts", function () {
     })).deploy();
     await merkleTree.waitForDeployment();
 
-    // Use MockBountyClaimVerifier for tests (real ZK verification tested in BountyClaimVerifier.test.ts)
+    // Use MockBountyClaimVerifier for withdrawal tests (real ZK verification tested in BountyClaimVerifier.test.ts)
     const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
     await verifier.waitForDeployment();
 
@@ -109,20 +112,22 @@ describe("ConfidentialPayouts", function () {
   it("withdraws bounty to fresh wallet", async () => {
     const bounty = 5_000n * DECIMALS_6;
     const nullifier = ethers.keccak256(ethers.randomBytes(32));
+    
     await lockFundsViaBB(nullifier, bounty);
-    const leaf = ethers.keccak256(ethers.solidityPacked(["bytes32","uint256","uint256"], [ethers.keccak256(ethers.randomBytes(32)), bounty, Math.floor(Date.now()/1000)]));
-    await merkleTree.insertApprovedLeaf(leaf);
+    await merkleTree.insertApprovedLeaf(nullifier);
     const root = await merkleTree.getRoot();
-    // Just verify withdrawal succeeds - balance is encrypted (euint64)
+    
+    // Withdraw with dummy proof (real ZK verification tested in BountyClaimVerifier.test.ts)
     await payouts.withdraw(root, nullifier, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
   });
 
   it("marks nullifier as spent", async () => {
     const bounty = 1_000n * DECIMALS_6;
     const nf = ethers.keccak256(ethers.randomBytes(32));
+    
     await lockFundsViaBB(nf, bounty);
-    const leaf = ethers.keccak256(ethers.solidityPacked(["bytes32","uint256","uint256"], [ethers.keccak256(ethers.randomBytes(32)), bounty, Math.floor(Date.now()/1000)]));
-    await merkleTree.insertApprovedLeaf(leaf);
+    await merkleTree.insertApprovedLeaf(nf);
+    
     await payouts.withdraw(await merkleTree.getRoot(), nf, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     expect(await payouts.isNullifierSpent(nf)).to.be.true;
   });
@@ -130,39 +135,46 @@ describe("ConfidentialPayouts", function () {
   it("reverts double withdrawal", async () => {
     const bounty = 1_000n * DECIMALS_6;
     const nf2 = ethers.keccak256(ethers.randomBytes(32));
+    
     await lockFundsViaBB(nf2, bounty * 2n);
-    const leaf = ethers.keccak256(ethers.solidityPacked(["bytes32","uint256","uint256"], [ethers.keccak256(ethers.randomBytes(32)), bounty, Math.floor(Date.now()/1000)]));
-    await merkleTree.insertApprovedLeaf(leaf);
+    await merkleTree.insertApprovedLeaf(nf2);
     const root = await merkleTree.getRoot();
+    
     await payouts.withdraw(root, nf2, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     await expect(payouts.withdraw(root, nf2, signers[4].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC)).to.be.revertedWith("Already withdrawn");
   });
 
   it("reverts invalid root", async () => {
-    await expect(payouts.withdraw(ethers.keccak256(ethers.toUtf8Bytes("bad")), ethers.keccak256(ethers.randomBytes(32)), signers[3].address, 1000n, DUMMY_PA, DUMMY_PB, DUMMY_PC)).to.be.revertedWith("Invalid root");
+    const nf = ethers.keccak256(ethers.randomBytes(32));
+    await expect(
+      payouts.withdraw(ethers.keccak256(ethers.toUtf8Bytes("bad")), nf, signers[3].address, 1000n, DUMMY_PA, DUMMY_PB, DUMMY_PC)
+    ).to.be.revertedWith("Invalid root");
   });
 
   it("two different nullifiers can coexist — both withdrawals succeed", async () => {
     const bounty = 3_000n * DECIMALS_6;
     const nf1 = ethers.keccak256(ethers.toUtf8Bytes("nf-one"));
     const nf2 = ethers.keccak256(ethers.toUtf8Bytes("nf-two"));
+    
     await lockFundsViaBB(nf1, bounty);
     await lockFundsViaBB(nf2, bounty);
     await merkleTree.insertApprovedLeaf(nf1);
     await merkleTree.insertApprovedLeaf(nf2);
     const root = await merkleTree.getRoot();
-    // Note: Can't check encrypted balances, just verify both withdrawals succeed
+    
+    // Both withdrawals should succeed
     await payouts.withdraw(root, nf1, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     await payouts.withdraw(root, nf2, signers[4].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
-    // Both withdrawals succeeded - balances are encrypted (euint64)
   });
 
   it("isNullifierSpent: false before withdrawal, true after", async () => {
     const bounty = 2_000n * DECIMALS_6;
     const nf = ethers.keccak256(ethers.toUtf8Bytes("nf-spent-check"));
+    
     await lockFundsViaBB(nf, bounty);
     await merkleTree.insertApprovedLeaf(nf);
     const root = await merkleTree.getRoot();
+    
     expect(await payouts.isNullifierSpent(nf)).to.be.false;
     await payouts.withdraw(root, nf, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC);
     expect(await payouts.isNullifierSpent(nf)).to.be.true;
@@ -171,9 +183,11 @@ describe("ConfidentialPayouts", function () {
   it("withdraw emits Withdrawal event with nullifier and root", async () => {
     const bounty = 1_000n * DECIMALS_6;
     const nf = ethers.keccak256(ethers.toUtf8Bytes("nf-event-check"));
+    
     await lockFundsViaBB(nf, bounty);
     await merkleTree.insertApprovedLeaf(nf);
     const root = await merkleTree.getRoot();
+    
     await expect(
       payouts.withdraw(root, nf, signers[3].address, bounty, DUMMY_PA, DUMMY_PB, DUMMY_PC)
     ).to.emit(payouts, "Withdrawal").withArgs(nf, root);
@@ -182,21 +196,21 @@ describe("ConfidentialPayouts", function () {
   // ── Access Control Tests ──────────────────────────────────────
 
   it("constructor reverts for zero bug bounty program", async () => {
-    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
+    const verifier = await (await ethers.getContractFactory("BountyClaimVerifier")).deploy();
     await expect(
       (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, ethers.ZeroAddress, vaultAddr, await merkleTree.getAddress(), await verifier.getAddress())
     ).to.be.revertedWith("Zero bug bounty program");
   });
 
   it("constructor reverts for zero vault", async () => {
-    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
+    const verifier = await (await ethers.getContractFactory("BountyClaimVerifier")).deploy();
     await expect(
       (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, ethers.ZeroAddress, await merkleTree.getAddress(), await verifier.getAddress())
     ).to.be.revertedWith("Zero vault");
   });
 
   it("constructor reverts for zero merkle tree", async () => {
-    const verifier = await (await ethers.getContractFactory("MockBountyClaimVerifier")).deploy();
+    const verifier = await (await ethers.getContractFactory("BountyClaimVerifier")).deploy();
     await expect(
       (await ethers.getContractFactory("ConfidentialPayouts")).deploy(PID, bbAddr, vaultAddr, ethers.ZeroAddress, await verifier.getAddress())
     ).to.be.revertedWith("Zero merkle tree");
