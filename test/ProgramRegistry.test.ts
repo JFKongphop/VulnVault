@@ -30,10 +30,13 @@ describe("ProgramRegistry", function () {
     const hasher = await (await ethers.getContractFactory("Hasher")).deploy();
     await hasher.waitForDeployment();
     
+    const verifier = await (await ethers.getContractFactory("BountyClaimVerifier")).deploy();
+    await verifier.waitForDeployment();
+    
     registry = await (await ethers.getContractFactory("ProgramRegistry", {
       libraries: { Hasher: await hasher.getAddress() },
     })).deploy(
-      await cUSDT.getAddress(), await reputation.getAddress(), await resolver.getAddress()
+      await cUSDT.getAddress(), await reputation.getAddress(), await resolver.getAddress(), await verifier.getAddress()
     );
     await registry.waitForDeployment();
     registryAddr = await registry.getAddress();
