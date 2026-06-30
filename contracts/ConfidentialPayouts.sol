@@ -4,14 +4,12 @@ pragma solidity ^0.8.24;
 import {IConfidentialPayouts} from "./interfaces/IConfidentialPayouts.sol";
 import {IMerkleTree} from "./interfaces/IMerkleTree.sol";
 import {IBountyVault} from "./interfaces/IBountyVault.sol";
+import {IBountyClaimVerifier} from "./interfaces/IBountyClaimVerifier.sol";
 
-/// @title ConfidentialPayouts — ZK withdrawal engine (skeleton)
+/// @title ConfidentialPayouts — ZK withdrawal engine
 /// @notice Verifies ZK proofs and releases bounties to fresh wallets.
-///         The ZK proof proves: "I know secret + nullifier whose commitment
-///         is an approved leaf in the Merkle tree. Pay amount to recipient."
-///
-///         This is a SKELETON. The ZK proof verification is a placeholder.
-///         Developer will replace with a real Circom verifier.
+///         The ZK proof proves: "I know secret[2] whose commitment
+///         (with impactType and severity) is an approved leaf in the Merkle tree."
 ///
 /// Privacy guarantees:
 ///   - Reporter's submission wallet is never connected to recipient wallet
@@ -23,6 +21,7 @@ contract ConfidentialPayouts is IConfidentialPayouts {
 
   IMerkleTree public merkleTree;
   IBountyVault public vault;
+  IBountyClaimVerifier public verifier;
   address public bugBountyProgram;
 
   /// @dev Tracks spent nullifiers to prevent double withdrawals.
@@ -55,15 +54,18 @@ contract ConfidentialPayouts is IConfidentialPayouts {
     uint256 pid,
     address _bugBountyProgram,
     address _vault,
-    address _merkleTree
+    address _merkleTree,
+    address _verifier
   ) {
     require(_bugBountyProgram != address(0), "Zero bug bounty program");
     require(_vault != address(0), "Zero vault");
     require(_merkleTree != address(0), "Zero merkle tree");
+    require(_verifier != address(0), "Zero verifier");
     programId = pid;
     bugBountyProgram = _bugBountyProgram;
     vault = IBountyVault(_vault);
     merkleTree = IMerkleTree(_merkleTree);
+    verifier = IBountyClaimVerifier(_verifier);
   }
 
   // ── Update Merkle Root
@@ -78,12 +80,22 @@ contract ConfidentialPayouts is IConfidentialPayouts {
   // ── Withdraw (ZK Proof)
   // ────────────────────────────────────────────────
 
+  /// @notice Withdraw bounty using ZK proof
+  /// @param root Merkle root from the approved reports tree
+  /// @param nullifierHash Commitment hash (prevents double-spend)
+  /// @param recipient Address to receive the bounty
+  /// @param amount Bounty amount to withdraw
+  /// @param pA Proof component A
+  /// @param pB Proof component B
+  /// @param pC Proof component C
   function withdraw(
     bytes32 root,
     bytes32 nullifierHash,
     address recipient,
     uint256 amount,
-    bytes calldata /* zkProof */
+    uint256[2] calldata pA,
+    uint256[2][2] calldata pB,
+    uint256[2] calldata pC
   )
     external
   {
@@ -94,14 +106,13 @@ contract ConfidentialPayouts is IConfidentialPayouts {
     require(!nullifierSpent[nullifierHash], "Already withdrawn");
 
     // 3. Verify ZK proof
-    // TODO: Replace with real ZK verifier (Circom + snarkjs)
     // The proof proves:
-    //   "I know (secret, nullifier) such that:
-    //     a) keccak256(secret, nullifier) = commitment
+    //   "I know (secret[2], impactType, severity) such that:
+    //     a) commitment = H(secret[0], secret[1], impactType, severity)
     //     b) commitment is an approved leaf in the Merkle tree with `root`
-    //     c) nullifierHash = keccak256(nullifier)"
-    //     d) amount matches the approved leaf"
-    bool proofValid = true; // placeholder
+    //     c) commitment = nullifierHash (public input)"
+    uint256[2] memory publicSignals = [uint256(root), uint256(nullifierHash)];
+    bool proofValid = verifier.verifyProof(pA, pB, pC, publicSignals);
     require(proofValid, "Invalid proof");
 
     // 4. Mark nullifier spent
