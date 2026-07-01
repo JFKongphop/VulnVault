@@ -53,6 +53,8 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
 
     // Option 2: Symmetric key encrypted with admin's public key
     bytes encryptedSymmetricKey;
+    // Symmetric key encrypted with reporter's wallet-derived key (for self-decryption)
+    bytes encryptedSymmetricKeyForReporter;
   }
 
   mapping(bytes32 => SubmittedReport) private _submissions;
@@ -152,7 +154,8 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
     bytes calldata encryptedPoC,
     bytes calldata encryptedGistLink,
     bytes calldata encryptedAttachments,
-    bytes calldata encryptedSymmetricKey
+    bytes calldata encryptedSymmetricKey,
+    bytes calldata encryptedSymmetricKeyForReporter
   )
     external
     returns (bytes32 submissionId)
@@ -177,6 +180,7 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
     r.encryptedGistLink = encryptedGistLink;
     r.encryptedAttachments = encryptedAttachments;
     r.encryptedSymmetricKey = encryptedSymmetricKey;
+    r.encryptedSymmetricKeyForReporter = encryptedSymmetricKeyForReporter;
 
     r.encryptedImpactType = FHE.fromExternal(inImpactType, inputProof);
     r.encryptedSeverity = FHE.fromExternal(inSeverity, inputProof);
@@ -457,6 +461,14 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   /// @return Symmetric key encrypted with admin's public key
   function getEncryptedSymmetricKey(bytes32 submissionId) external view onlyAdmin returns (bytes memory) {
     return _submissions[submissionId].encryptedSymmetricKey;
+  }
+
+  /// @notice Get reporter's copy of the encrypted symmetric key (only callable by the original reporter)
+  /// @param submissionId The submission ID
+  /// @return Symmetric key encrypted with the reporter's wallet-derived key
+  function getEncryptedSymmetricKeyForReporter(bytes32 submissionId) external view returns (bytes memory) {
+    require(_submissions[submissionId].reporter == msg.sender, "Not reporter");
+    return _submissions[submissionId].encryptedSymmetricKeyForReporter;
   }
 
   /// @notice Retrieve all encrypted report data from on-chain storage (admin only)
