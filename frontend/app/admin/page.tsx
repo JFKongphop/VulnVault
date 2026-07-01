@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -7,6 +8,7 @@ import { Hash } from '@/components/ui/Hash';
 import { SeverityBadge, StatusBadge } from '@/components/ui/Badge';
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
   // Mock data - will be replaced with real contract data
   const programStats = {
     name: 'DeFi Protocol Alpha',
@@ -84,325 +86,59 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Stats Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '16px',
-            marginBottom: '40px'
-          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '40px' }}>
             <Card style={{ padding: '24px', textAlign: 'center' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                AVAILABLE BALANCE
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '32px',
-                fontWeight: 700,
-                color: 'var(--cyan)'
-              }}>
-                {programStats.availableBalance}
-              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>AVAILABLE BALANCE</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '32px', fontWeight: 700, color: 'var(--cyan)' }}>{programStats.availableBalance}</div>
             </Card>
-
             <Card style={{ padding: '24px', textAlign: 'center' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                LOCKED FUNDS
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '32px',
-                fontWeight: 700,
-                color: 'var(--yellow)'
-              }}>
-                {programStats.lockedBalance}
-              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>LOCKED FUNDS</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '32px', fontWeight: 700, color: 'var(--yellow)' }}>{programStats.lockedBalance}</div>
             </Card>
-
             <Card style={{ padding: '24px', textAlign: 'center' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                PENDING REVIEW
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '32px',
-                fontWeight: 700,
-                color: 'var(--red)'
-              }}>
-                {programStats.pending}
-              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>PENDING REVIEW</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '32px', fontWeight: 700, color: 'var(--red)' }}>{programStats.pending}</div>
             </Card>
-
             <Card style={{ padding: '24px', textAlign: 'center' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                TOTAL PAID
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '32px',
-                fontWeight: 700,
-                color: 'var(--green)'
-              }}>
-                {programStats.totalPaid}
-              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>TOTAL PAID</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '32px', fontWeight: 700, color: 'var(--green)' }}>{programStats.totalPaid}</div>
             </Card>
           </div>
 
           {/* Quick Actions */}
           <Card style={{ padding: '24px', marginBottom: '32px' }}>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: 'var(--text-dim)',
-              marginBottom: '20px'
-            }}>
-              ⚡ QUICK ACTIONS
-            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-dim)', marginBottom: '20px' }}>⚡ QUICK ACTIONS</div>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <Button 
-                variant="primary"
-                onClick={() => window.location.href = '/admin/vault'}
-              >
-                💰 Manage Vault
-              </Button>
-              <Button 
-                variant="secondary"
-                onClick={() => alert('Program settings coming soon')}
-              >
-                ⚙️ Program Settings
-              </Button>
-              <Button 
-                variant="secondary"
-                onClick={() => window.location.href = '/disputes'}
-              >
-                ⚖️ View Disputes
-              </Button>
+              <Button variant="primary" onClick={() => router.push('/admin/vault')}>💰 Manage Vault</Button>
+              <Button variant="secondary" onClick={() => alert('Program settings coming soon')}>⚙️ Program Settings</Button>
+              <Button variant="secondary" onClick={() => router.push('/disputes')}>⚖️ View Disputes</Button>
             </div>
           </Card>
 
           {/* Pending Reports Table */}
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                color: 'var(--text-dim)'
-              }}>
-                PENDING REPORTS
-              </div>
-              <div style={{
-                fontSize: '13px',
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--text-muted)'
-              }}>
-                {pendingReports.length} reports
-              </div>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-dim)' }}>PENDING REPORTS</div>
+              <div style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{pendingReports.length} reports</div>
             </div>
-
-            {/* Table Header */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '80px 1fr 140px 140px 120px 140px',
-              gap: '16px',
-              padding: '16px 24px',
-              borderBottom: '1px solid var(--border)',
-              fontSize: '11px',
-              fontFamily: 'var(--font-mono)',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              color: 'var(--text-dim)',
-              letterSpacing: '0.1em'
-            }}>
-              <div>ID</div>
-              <div>Impact Type</div>
-              <div>Severity</div>
-              <div>Status</div>
-              <div>Submitted</div>
-              <div>Action</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 140px 140px 120px 140px', gap: '16px', padding: '16px 24px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-dim)', letterSpacing: '0.1em' }}>
+              <div>ID</div><div>Impact Type</div><div>Severity</div><div>Status</div><div>Submitted</div><div>Action</div>
             </div>
-
-            {/* Table Rows */}
             {pendingReports.map((report) => (
-              <div
-                key={report.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '80px 1fr 140px 140px 120px 140px',
-                  gap: '16px',
-                  padding: '20px 24px',
-                  borderBottom: '1px solid var(--border)',
-                  alignItems: 'center',
-                  transition: 'background 0.2s',
-                  cursor: 'pointer'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
+              <div key={report.id} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 140px 140px 120px 140px', gap: '16px', padding: '20px 24px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
-                {/* ID */}
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  color: 'var(--text)'
-                }}>
-                  #{report.submissionId}
-                </div>
-
-                {/* Impact Type */}
-                <div style={{
-                  fontSize: '14px',
-                  color: 'var(--text)'
-                }}>
-                  {report.impactType}
-                </div>
-
-                {/* Severity */}
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>#{report.submissionId}</div>
+                <div style={{ fontSize: '14px', color: 'var(--text)' }}>{report.impactType}</div>
+                <div><SeverityBadge level={report.severity as 1 | 2 | 3 | 4} /></div>
+                <div><StatusBadge status={report.status} /></div>
+                <div style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{report.submittedDate}</div>
                 <div>
-                  <SeverityBadge level={report.severity as 1 | 2 | 3 | 4} />
-                </div>
-
-                {/* Status */}
-                <div>
-                  <StatusBadge status={report.status} />
-                </div>
-
-                {/* Submitted Date */}
-                <div style={{
-                  fontSize: '13px',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-muted)'
-                }}>
-                  {report.submittedDate}
-                </div>
-
-                {/* Action */}
-                <div>
-                  <Button 
-                    variant="primary"
-                    onClick={() => window.location.href = `/admin/review/${report.submissionId}`}
-                    style={{ fontSize: '12px', padding: '8px 16px' }}
-                  >
-                    Review →
-                  </Button>
+                  <Button variant="primary" onClick={() => router.push(`/admin/review/${report.submissionId}`)} style={{ fontSize: '12px', padding: '8px 16px' }}>Review →</Button>
                 </div>
               </div>
             ))}
-          </Card>
-
-          {/* Report Stats Summary */}
-          <Card style={{ padding: '24px', marginTop: '24px' }}>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: 'var(--text-dim)',
-              marginBottom: '20px'
-            }}>
-              REPORT STATISTICS
-            </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: '24px'
-            }}>
-              <div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  Total Reports
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '24px',
-                  fontWeight: 700,
-                  color: 'var(--text)'
-                }}>
-                  {programStats.totalReports}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  Approved
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '24px',
-                  fontWeight: 700,
-                  color: 'var(--green)'
-                }}>
-                  {programStats.approved}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  Under Review
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '24px',
-                  fontWeight: 700,
-                  color: 'var(--yellow)'
-                }}>
-                  {programStats.underReview}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  Rejected
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '24px',
-                  fontWeight: 700,
-                  color: 'var(--red)'
-                }}>
-                  {programStats.rejected}
-                </div>
-              </div>
-            </div>
           </Card>
         </div>
       </section>

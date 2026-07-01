@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +10,7 @@ import { Hash } from '@/components/ui/Hash';
 import { LoadingOverlay } from '@/components/ui/Loading';
 
 export default function VaultManagementPage() {
+  const router = useRouter();
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -109,7 +111,7 @@ export default function VaultManagementPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <Button 
                 variant="secondary"
-                onClick={() => window.location.href = '/admin'}
+                onClick={() => router.push('/admin')}
                 style={{ padding: '8px 16px', fontSize: '13px' }}
               >
                 ← Back

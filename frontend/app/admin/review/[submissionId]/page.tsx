@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +15,7 @@ import { useReviewReport } from '@/hooks/useReviewReport';
 
 export default function AdminReviewPage() {
   const params = useParams();
+  const router = useRouter();
   const submissionId = params.submissionId as `0x${string}`;
 
   const [showDecryptModal, setShowDecryptModal] = useState(false);
@@ -94,7 +95,7 @@ export default function AdminReviewPage() {
 
   if (isReviewSuccess) {
     setTimeout(() => {
-      window.location.href = '/admin';
+      router.push('/admin');
     }, 2000);
   }
 
@@ -120,7 +121,7 @@ export default function AdminReviewPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <Button 
                 variant="secondary"
-                onClick={() => window.location.href = '/admin'}
+                onClick={() => router.push('/admin')}
                 style={{ padding: '8px 16px', fontSize: '13px' }}
               >
                 ← Back
@@ -477,7 +478,7 @@ export default function AdminReviewPage() {
 
                   <Button 
                     variant="secondary"
-                    onClick={() => window.location.href = '/disputes'}
+                    onClick={() => router.push('/disputes')}
                     style={{ width: '100%', padding: '12px' }}
                   >
                     🔀 Escalate to Dispute
