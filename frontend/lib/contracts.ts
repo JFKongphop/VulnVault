@@ -3,28 +3,43 @@ export const CONTRACTS = {
   BUG_BOUNTY_PROGRAM: (process.env.NEXT_PUBLIC_BUG_BOUNTY_PROGRAM || '0x') as `0x${string}`,
   BOUNTY_VAULT: (process.env.NEXT_PUBLIC_BOUNTY_VAULT || '0x') as `0x${string}`,
   CONFIDENTIAL_PAYOUTS: (process.env.NEXT_PUBLIC_CONFIDENTIAL_PAYOUTS || '0x') as `0x${string}`,
-  MERKLE_TREE: (process.env.NEXT_PUBLIC_MERKLE_TREE || '0x') as `0x${string}`,
   VERIFIER: (process.env.NEXT_PUBLIC_VERIFIER || '0x') as `0x${string}`,
   WHITEHAT_REPUTATION: (process.env.NEXT_PUBLIC_WHITEHAT_REPUTATION || '0x') as `0x${string}`,
   DISPUTE_RESOLVER: (process.env.NEXT_PUBLIC_DISPUTE_RESOLVER || '0x') as `0x${string}`,
   PROGRAM_REGISTRY: (process.env.NEXT_PUBLIC_PROGRAM_REGISTRY || '0x') as `0x${string}`,
   MOCK_USDT: (process.env.NEXT_PUBLIC_MOCK_USDT || '0x') as `0x${string}`,
+  CONFIDENTIAL_TOKEN: (process.env.NEXT_PUBLIC_CONFIDENTIAL_TOKEN || '0x') as `0x${string}`,
 } as const;
+
+// MockERC20 ABI (underlying USDT token)
+export const MOCK_ERC20_ABI = [
+  { inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], name: 'allowance', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'mint', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+] as const;
+
+// ERC7984ERC20Wrapper ABI (MockConfidentialUSDT — wraps ERC20 → confidential token)
+export const CONFIDENTIAL_TOKEN_ABI = [
+  // confidentialBalanceOf returns a bytes32 handle to the encrypted euint64 balance
+  { inputs: [{ name: 'account', type: 'address' }], name: 'confidentialBalanceOf', outputs: [{ name: '', type: 'bytes32' }], stateMutability: 'view', type: 'function' },
+  // Direct mint (demo only) — no ERC20 needed
+  { inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint64' }], name: 'mint', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  // Wrap: approve underlying first, then call depositFor
+  { inputs: [{ name: 'account', type: 'address' }, { name: 'value', type: 'uint256' }], name: 'depositFor', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
+  // Unwrap: burns confidential token and returns underlying
+  { inputs: [{ name: 'account', type: 'address' }, { name: 'value', type: 'uint256' }], name: 'withdrawTo', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
+  { inputs: [], name: 'underlying', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+] as const;
 
 // ABIs matching actual contract functions
 export const BUG_BOUNTY_PROGRAM_ABI = [
-  {
-    inputs: [],
-    name: 'getProgramInfo',
-    outputs: [
-      { name: 'admin', type: 'address' },
-      { name: 'name', type: 'string' },
-      { name: 'description', type: 'string' },
-      { name: 'totalPaid', type: 'uint256' },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
+  // Public state variable getters
+  { inputs: [], name: 'admin', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'programId', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'adminPublicKey', outputs: [{ name: '', type: 'bytes' }], stateMutability: 'view', type: 'function' },
   {
     inputs: [],
     name: 'getSubmissionCount',
@@ -46,6 +61,7 @@ export const BUG_BOUNTY_PROGRAM_ABI = [
       { name: 'encryptedGistLink', type: 'bytes' },
       { name: 'encryptedAttachments', type: 'bytes' },
       { name: 'encryptedSymmetricKey', type: 'bytes' },
+      { name: 'encryptedSymmetricKeyForReporter', type: 'bytes' },
     ],
     name: 'submitReport',
     outputs: [{ name: 'submissionId', type: 'bytes32' }],
@@ -154,6 +170,13 @@ export const BUG_BOUNTY_PROGRAM_ABI = [
   },
   {
     inputs: [{ name: 'submissionId', type: 'bytes32' }],
+    name: 'getEncryptedSymmetricKeyForReporter',
+    outputs: [{ name: '', type: 'bytes' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'submissionId', type: 'bytes32' }],
     name: 'getEncryptedReportData',
     outputs: [
       { name: '', type: 'bytes' },
@@ -185,6 +208,13 @@ export const BUG_BOUNTY_PROGRAM_ABI = [
 ] as const;
 
 export const BOUNTY_VAULT_ABI = [
+  {
+    inputs: [],
+    name: 'confidentialPayouts',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
   {
     inputs: [],
     name: 'getAvailableBalance',
@@ -367,6 +397,17 @@ export const DISPUTE_RESOLVER_ABI = [
 ] as const;
 
 export const PROGRAM_REGISTRY_ABI = [
+  {
+    inputs: [{ name: 'pid', type: 'uint256' }],
+    name: 'getProgramContracts',
+    outputs: [
+      { name: 'bugBounty', type: 'address' },
+      { name: 'vault', type: 'address' },
+      { name: 'merkleTree', type: 'address' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
   {
     inputs: [],
     name: 'getActivePrograms',

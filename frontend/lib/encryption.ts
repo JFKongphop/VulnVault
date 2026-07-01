@@ -215,6 +215,59 @@ export class BugReportEncryption {
   }
 
   /**
+   * Encrypt symmetric key for the reporter using a key derived from their wallet signature.
+   * The reporter calls personal_sign on a deterministic message, passes the signature here.
+   * @param personalSignHex 0x-prefixed hex signature from wallet
+   */
+  async encryptKeyForReporter(personalSignHex: string): Promise<Uint8Array<ArrayBuffer>> {
+    const sigBytes = hexToBuffer(personalSignHex);
+    const keyMaterial = await crypto.subtle.digest('SHA-256', sigBytes);
+    const aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+    const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv, tagLength: 128 },
+      aesKey,
+      this.symmetricKeyRaw
+    );
+    const result = new Uint8Array(new ArrayBuffer(12 + encrypted.byteLength));
+    result.set(iv, 0);
+    result.set(new Uint8Array(encrypted), 12);
+    return result;
+  }
+
+  /**
+   * Decrypt reporter's copy of the symmetric key using their wallet signature.
+   * @param personalSignHex 0x-prefixed hex signature (must match the one used during encryption)
+   * @param encryptedBlob Hex string of the encrypted blob stored on-chain
+   */
+  static async decryptKeyForReporter(personalSignHex: string, encryptedBlob: string): Promise<string> {
+    const blobBytes = hexToBuffer(encryptedBlob);
+    const iv = blobBytes.slice(0, 12);
+    const ciphertext = blobBytes.slice(12);
+    const sigBytes = hexToBuffer(personalSignHex);
+    const keyMaterial = await crypto.subtle.digest('SHA-256', sigBytes);
+    const aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, tagLength: 128 },
+      aesKey,
+      ciphertext
+    );
+    return bufferToHex(new Uint8Array(decrypted as ArrayBuffer));
+  }
+
+  /**
    * Get symmetric key as hex string (for reporter's local backup)
    */
   getSymmetricKeyHex(): string {
