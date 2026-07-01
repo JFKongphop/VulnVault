@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
 import { useEncrypt } from '@zama-fhe/react-sdk';
 import { CONTRACTS, BUG_BOUNTY_PROGRAM_ABI } from '@/lib/contracts';
 import { generateSecrets, generateCommitment } from '@/lib/poseidon';
@@ -30,6 +30,7 @@ export function useSubmitReport() {
 
   // FHE hooks
   const encrypt = useEncrypt();
+  const { signMessageAsync } = useSignMessage();
 
   // Contract write hooks
   const { writeContract, data: txHash, isPending } = useWriteContract();
@@ -68,6 +69,13 @@ export function useSubmitReport() {
 
       // Step 6: Encrypt symmetric key for admin
       const encryptedSymmetricKey = await reportEncryption.encryptKeyForAdmin(adminPublicKey);
+
+      // Step 6b: Encrypt symmetric key for reporter using wallet signature
+      // Sign a deterministic message — same wallet always produces same derived key
+      const reporterSig = await signMessageAsync({
+        message: 'VulnVault: Authorize report encryption key access'
+      });
+      const encryptedSymmetricKeyForReporter = await reportEncryption.encryptKeyForReporter(reporterSig);
 
       // Step 7: FHE encrypt numeric fields (impactType, severity) in one call
       const enc = await encrypt.mutateAsync({
@@ -118,6 +126,7 @@ export function useSubmitReport() {
           toHexString(encryptedReport.encryptedGistLink),
           toHexString(encryptedReport.encryptedAttachments),
           toHexString(encryptedSymmetricKey),
+          toHexString(encryptedSymmetricKeyForReporter),
         ],
       });
     } catch (error) {

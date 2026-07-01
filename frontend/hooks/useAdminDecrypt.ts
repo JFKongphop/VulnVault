@@ -43,7 +43,7 @@ export function useAdminDecrypt(submissionId: `0x${string}` | undefined) {
     },
   });
 
-  const decryptReport = async (adminPrivateKeyHex: string) => {
+  const decryptReport = async (adminPrivateKeyInput: string) => {
     if (!encryptedSymmetricKey || !encryptedReportData) {
       setError('Missing encrypted data');
       return;
@@ -52,6 +52,17 @@ export function useAdminDecrypt(submissionId: `0x${string}` | undefined) {
     try {
       setIsDecrypting(true);
       setError(null);
+
+      // Auto-detect PEM format and convert to hex DER
+      let adminPrivateKeyHex = adminPrivateKeyInput.trim();
+      if (adminPrivateKeyHex.startsWith('-----BEGIN')) {
+        const b64 = adminPrivateKeyHex
+          .replace(/-----BEGIN[^-]+-----/, '')
+          .replace(/-----END[^-]+-----/, '')
+          .replace(/\s+/g, '');
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        adminPrivateKeyHex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
 
       // Step 1: Decrypt the symmetric key with admin's RSA private key
       const symmetricKeyHex = await decryptSymmetricKey(

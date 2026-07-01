@@ -4,21 +4,26 @@ import { useReadContract } from 'wagmi';
 import { CONTRACTS, BUG_BOUNTY_PROGRAM_ABI } from '@/lib/contracts';
 
 export function useProgramInfo() {
-  const { data, isLoading, error } = useReadContract({
+  const { data: adminAddr, isLoading: l1 } = useReadContract({
     address: CONTRACTS.BUG_BOUNTY_PROGRAM,
     abi: BUG_BOUNTY_PROGRAM_ABI,
-    functionName: 'getProgramInfo',
+    functionName: 'admin',
+  });
+
+  const { data: pid, isLoading: l2 } = useReadContract({
+    address: CONTRACTS.BUG_BOUNTY_PROGRAM,
+    abi: BUG_BOUNTY_PROGRAM_ABI,
+    functionName: 'programId',
   });
 
   return {
-    programInfo: data ? {
-      admin: data[0],
-      name: data[1],
-      description: data[2],
-      totalPaid: data[3],
+    programInfo: adminAddr ? {
+      admin: adminAddr as string,
+      programId: pid ? Number(pid) : 0,
+      name: 'VulnVault Bug Bounty',
+      description: 'Privacy-preserving bug bounty program. Reports are FHE-encrypted on-chain — only the admin can decrypt.',
     } : null,
-    isLoading,
-    error,
+    isLoading: l1 || l2,
   };
 }
 
