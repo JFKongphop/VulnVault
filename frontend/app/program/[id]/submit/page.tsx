@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +12,7 @@ import { useSubmitReport } from '@/hooks/useSubmitReport';
 
 export default function SubmitReportPage() {
   const params = useParams();
+  const router = useRouter();
   const programId = params.id as string;
 
   // All report fields matching test structure
@@ -200,7 +201,7 @@ export default function SubmitReportPage() {
                 </Button>
                 <Button 
                   variant="secondary"
-                  onClick={() => window.location.href = '/my-reports'}
+                  onClick={() => router.push('/my-reports')}
                   style={{ flex: 1 }}
                 >
                   View My Reports →

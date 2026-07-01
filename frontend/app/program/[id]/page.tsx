@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Badge, SeverityBadge, StatusBadge } from '@/components/ui/Badge';
@@ -12,6 +12,7 @@ import { CONTRACTS, BOUNTY_VAULT_ABI } from '@/lib/contracts';
 
 export default function ProgramDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const programId = params.id as string;
 
   // Mock data - will be replaced with real contract data
@@ -70,7 +71,7 @@ export default function ProgramDetailPage() {
           </p>
 
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
-            <Button variant="primary" onClick={() => window.location.href = `/program/${programId}/submit`}>
+            <Button variant="primary" onClick={() => router.push(`/program/${programId}/submit`)}>
               🔍 Submit Report
             </Button>
             <Button variant="secondary" onClick={() => window.open(program.website, '_blank')}>
@@ -292,7 +293,7 @@ export default function ProgramDetailPage() {
             </p>
             <Button 
               variant="secondary" 
-              onClick={() => window.location.href = '/reputation'}
+              onClick={() => router.push('/reputation')}
               style={{ width: '100%' }}
             >
               Check My Reputation →
