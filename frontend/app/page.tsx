@@ -2,53 +2,19 @@
 
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
-import { Badge, SeverityBadge } from '@/components/ui/Badge';
+import { SeverityBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Hash } from '@/components/ui/Hash';
 import { useRouter } from 'next/navigation';
+import { useProgramInfo, useSubmissionCount } from '@/hooks/useProgramData';
+import { CONTRACTS } from '@/lib/contracts';
 
 export default function HomePage() {
   const router = useRouter();
-  // Mock data - will be replaced with real contract data
-  const stats = {
-    totalPrograms: 12,
-    totalBounties: '$2,450,000',
-    reportsSubmitted: 847,
-    avgPayout: '$15,200'
-  };
 
-  const programs = [
-    {
-      id: 1,
-      name: 'DeFi Protocol Alpha',
-      address: '0x1234567890123456789012345678901234567890',
-      description: 'Decentralized lending and borrowing protocol with cross-chain support',
-      bountyPool: '$500,000',
-      reportsCount: 45,
-      maxSeverity: 4,
-      minTier: 2
-    },
-    {
-      id: 2,
-      name: 'NFT Marketplace Beta',
-      address: '0x2345678901234567890123456789012345678901',
-      description: 'Next-generation NFT marketplace with zero-knowledge privacy features',
-      bountyPool: '$250,000',
-      reportsCount: 28,
-      maxSeverity: 3,
-      minTier: 1
-    },
-    {
-      id: 3,
-      name: 'Bridge Protocol Gamma',
-      address: '0x3456789012345678901234567890123456789012',
-      description: 'Cross-chain bridge supporting 10+ blockchain networks',
-      bountyPool: '$800,000',
-      reportsCount: 62,
-      maxSeverity: 4,
-      minTier: 3
-    },
-  ];
+  const { programInfo, isLoading: infoLoading } = useProgramInfo();
+  const { count: reportsCount, isLoading: countLoading } = useSubmissionCount();
+  const isLoading = infoLoading || countLoading;
 
   return (
     <div>
@@ -101,10 +67,10 @@ export default function HomePage() {
             gap: '24px'
           }}>
             {[
-              { label: 'ACTIVE PROGRAMS', value: stats.totalPrograms },
-              { label: 'TOTAL BOUNTIES', value: stats.totalBounties },
-              { label: 'REPORTS SUBMITTED', value: stats.reportsSubmitted },
-              { label: 'AVG PAYOUT', value: stats.avgPayout }
+              { label: 'ACTIVE PROGRAMS', value: isLoading ? '...' : '1' },
+              { label: 'REPORTS SUBMITTED', value: isLoading ? '...' : reportsCount },
+              { label: 'ENCRYPTION', value: 'FHE' },
+              { label: 'NETWORK', value: 'Sepolia' }
             ].map((stat, i) => (
               <Card key={i} style={{ padding: '24px', textAlign: 'center' }}>
                 <div style={{
@@ -145,108 +111,64 @@ export default function HomePage() {
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))',
+            gridTemplateColumns: 'repeat(3, 1fr)',
             gap: '24px',
             marginTop: '40px'
           }}>
-            {programs.map((program) => (
-              <Card key={program.id} style={{ padding: '24px', cursor: 'pointer' }}>
+            {isLoading ? (
+              <Card style={{ padding: '40px', textAlign: 'center' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>Loading from chain…</div>
+              </Card>
+            ) : programInfo ? (
+              <Card style={{ padding: '24px', cursor: 'pointer' }}>
                 {/* Program Header */}
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <h3 style={{
-                      fontSize: '18px',
-                      fontWeight: 700,
-                      color: 'var(--text)',
-                      flex: 1
-                    }}>
-                      {program.name}
+                    <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)', flex: 1 }}>
+                      {programInfo.name || 'VulnVault Program'}
                     </h3>
-                    <SeverityBadge level={program.maxSeverity as 1 | 2 | 3 | 4} />
+                    <SeverityBadge level={4} />
                   </div>
-                  <Hash value={program.address} />
+                  <Hash value={CONTRACTS.BUG_BOUNTY_PROGRAM} />
                 </div>
 
                 {/* Description */}
-                <p style={{
-                  fontSize: '14px',
-                  color: 'var(--text-muted)',
-                  lineHeight: 1.6,
-                  marginBottom: '20px'
-                }}>
-                  {program.description}
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '20px' }}>
+                  {programInfo.description || 'Privacy-preserving bug bounty program with FHE-encrypted report submissions.'}
                 </p>
 
                 {/* Stats */}
-                <div style={{
-                  display: 'flex',
-                  gap: '24px',
-                  marginBottom: '20px',
-                  paddingTop: '16px',
-                  borderTop: '1px solid var(--border)'
-                }}>
+                <div style={{ display: 'flex', gap: '24px', marginBottom: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-dim)',
-                      marginBottom: '4px'
-                    }}>
-                      BOUNTY POOL
-                    </div>
-                    <div style={{
-                      fontSize: '20px',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: 'var(--cyan)'
-                    }}>
-                      {program.bountyPool}
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '4px' }}>REPORTS</div>
+                    <div style={{ fontSize: '20px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text)' }}>
+                      {reportsCount}
                     </div>
                   </div>
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-dim)',
-                      marginBottom: '4px'
-                    }}>
-                      REPORTS
-                    </div>
-                    <div style={{
-                      fontSize: '20px',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: 'var(--text)'
-                    }}>
-                      {program.reportsCount}
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '4px' }}>PROGRAM ID</div>
+                    <div style={{ fontSize: '20px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--cyan)' }}>
+                      #{programInfo.programId}
                     </div>
                   </div>
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-dim)',
-                      marginBottom: '4px'
-                    }}>
-                      MIN TIER
-                    </div>
-                    <div style={{
-                      fontSize: '20px',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: 'var(--text)'
-                    }}>
-                      {program.minTier}
+                    <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: '4px' }}>ADMIN</div>
+                    <div style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text)' }}>
+                      {programInfo.admin ? programInfo.admin.slice(0, 6) + '…' + programInfo.admin.slice(-4) : '—'}
                     </div>
                   </div>
                 </div>
 
                 {/* Action Button */}
-                <Button variant="primary" style={{ width: '100%' }} onClick={() => router.push(`/program/${program.id}`)}>
+                <Button variant="primary" style={{ width: '100%' }} onClick={() => router.push('/program/0')}>
                   View Program →
                 </Button>
               </Card>
-            ))}
+            ) : (
+              <Card style={{ padding: '40px', textAlign: 'center' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-dim)' }}>No programs found on-chain.</div>
+              </Card>
+            )}
           </div>
         </div>
       </section>
