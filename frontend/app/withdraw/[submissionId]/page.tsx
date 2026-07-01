@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -13,6 +13,7 @@ import { useWithdraw } from '@/hooks/useWithdraw';
 
 export default function WithdrawPage() {
   const params = useParams();
+  const router = useRouter();
   const submissionId = params.submissionId as string;
 
   const [step, setStep] = useState(1);
@@ -22,7 +23,9 @@ export default function WithdrawPage() {
   const [severity, setSeverity] = useState('2');
   const [recipientAddress, setRecipientAddress] = useState('');
 
-  const { withdraw, isGeneratingProof, isPending, isSuccess, currentRoot } = useWithdraw();
+  // programId for this submission — in production, fetch from contract
+  const programId = BigInt(0);
+  const { withdraw, isGeneratingProof, isPending, isSuccess, currentRoot } = useWithdraw(programId);
 
   // Mock submission data
   const submission = {
@@ -133,7 +136,7 @@ export default function WithdrawPage() {
 
               <Button 
                 variant="primary"
-                onClick={() => window.location.href = '/my-reports'}
+                onClick={() => router.push('/my-reports')}
                 style={{ width: '100%' }}
               >
                 Back to My Reports
