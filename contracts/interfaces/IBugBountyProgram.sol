@@ -31,7 +31,8 @@ interface IBugBountyProgram {
     bytes calldata encryptedPoC,
     bytes calldata encryptedGistLink,
     bytes calldata encryptedAttachments,
-    bytes calldata encryptedSymmetricKey
+    bytes calldata encryptedSymmetricKey,
+    bytes calldata encryptedSymmetricKeyForReporter
   )
     external
     returns (bytes32 submissionId);
