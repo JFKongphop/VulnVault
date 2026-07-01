@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { Button } from './ui/Button';
 import { Hash } from './ui/Hash';
@@ -20,7 +21,7 @@ export function Navbar() {
   const navLink = (href: string, label: string) => {
     const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
     return (
-      <a
+      <Link
         href={href}
         style={{
           color: isActive ? 'var(--text)' : 'var(--text-muted)',
@@ -32,7 +33,7 @@ export function Navbar() {
         }}
       >
         {label}
-      </a>
+      </Link>
     );
   };
 
@@ -62,9 +63,9 @@ export function Navbar() {
           color: 'var(--cyan)',
           cursor: 'pointer'
         }}>
-          <a href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
             VULNVAULT
-          </a>
+          </Link>
         </div>
 
         {/* Navigation Links */}
@@ -78,6 +79,7 @@ export function Navbar() {
           {navLink('/', 'Programs')}
           {navLink('/my-reports', 'My Reports')}
           {navLink('/reputation', 'Reputation')}
+          {navLink('/wrap', 'Wrap Tokens')}
         </div>
 
         {/* Connect Wallet */}

@@ -106,7 +106,7 @@ export function DecryptReportModal({
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
                 {mode === 'admin' 
-                  ? 'Enter your admin RSA private key (hex format) to decrypt the report. Your key is processed locally and never transmitted.'
+                  ? 'Paste your admin_private.pem content below. Processed locally — never sent anywhere.'
                   : 'Enter your backed-up symmetric key (from when you submitted the report) to decrypt and view your submission.'
                 }
               </div>
@@ -120,16 +120,24 @@ export function DecryptReportModal({
                 color: 'var(--text)',
                 marginBottom: '8px',
               }}>
-                {mode === 'admin' ? 'Admin Private Key (Hex)' : 'Symmetric Key (Hex)'}
+                {mode === 'admin' ? 'Admin Private Key (PEM or Hex)' : 'Symmetric Key (Hex)'}
               </label>
-              <Input
-                type="password"
+              <textarea
                 value={secretKey}
                 onChange={(e) => setSecretKey(e.target.value)}
-                placeholder={mode === 'admin' ? '3082...' : 'a1b2c3d4e5f6...'}
+                placeholder={mode === 'admin' ? '-----BEGIN PRIVATE KEY-----\nMIIEv...' : 'a1b2c3d4e5f6...'}
+                rows={mode === 'admin' ? 6 : 2}
                 style={{
+                  width: '100%',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '13px',
+                  fontSize: '12px',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
                 }}
               />
             </div>
