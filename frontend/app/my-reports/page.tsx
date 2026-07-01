@@ -1,26 +1,26 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SeverityBadge, StatusBadge } from '@/components/ui/Badge';
 import { useMyReports } from '@/hooks/useMyReports';
-import { DecryptReportModal } from '@/components/DecryptReportModal';
-import { useAdminDecrypt } from '@/hooks/useAdminDecrypt';
+import { useReporterDecrypt } from '@/hooks/useReporterDecrypt';
 
 export default function MyReportsPage() {
   const { submissionIds, isLoading } = useMyReports();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<`0x${string}` | undefined>();
-  const [showDecryptModal, setShowDecryptModal] = useState(false);
 
   const {
     decryptedReport,
     isDecrypting,
     error,
-    decryptWithSymmetricKey,
-  } = useAdminDecrypt(selectedSubmission);
+    decryptMyReport,
+  } = useReporterDecrypt(selectedSubmission);
 
   useEffect(() => {
     setMounted(true);
@@ -46,11 +46,6 @@ export default function MyReportsPage() {
 
   const handleDecrypt = (submissionId: `0x${string}`) => {
     setSelectedSubmission(submissionId);
-    setShowDecryptModal(true);
-  };
-
-  const handleDecryptWithKey = async (symmetricKey: string) => {
-    await decryptWithSymmetricKey(symmetricKey);
   };
 
   if (!mounted || isLoading) {
@@ -71,19 +66,6 @@ export default function MyReportsPage() {
     <div>
       <Navbar />
 
-      <DecryptReportModal
-        isOpen={showDecryptModal}
-        onClose={() => {
-          setShowDecryptModal(false);
-          setSelectedSubmission(undefined);
-        }}
-        onDecrypt={handleDecryptWithKey}
-        decryptedReport={decryptedReport}
-        isDecrypting={isDecrypting}
-        error={error}
-        mode="reporter"
-      />
-
       <section className="section" style={{ paddingTop: '64px', paddingBottom: '80px' }}>
         <div className="section-inner">
           <div style={{ marginBottom: '40px' }}>
@@ -91,7 +73,7 @@ export default function MyReportsPage() {
               My Reports
             </h1>
             <p style={{ fontSize: '15px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-              Track the status of your submitted vulnerability reports. Use your backed-up symmetric key to decrypt and view your submissions.
+              Track the status of your submitted vulnerability reports. Click <strong>Sign &amp; Decrypt</strong> on any report to view it using your wallet.
             </p>
           </div>
 
@@ -128,6 +110,7 @@ export default function MyReportsPage() {
             </div>
 
             {reports.map((report) => (
+              <>
               <div key={report.id} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 120px 120px 140px 200px', gap: '16px', padding: '20px 24px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>#{report.id}</div>
                 <div>
@@ -141,17 +124,41 @@ export default function MyReportsPage() {
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 700, color: report.bounty === 'Pending' ? 'var(--text-muted)' : 'var(--cyan)' }}>
                   {report.bounty}
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <Button variant="secondary" onClick={() => handleDecrypt(report.submissionId)} style={{ fontSize: '12px', padding: '8px 12px' }}>
-                    🔓 Decrypt
+                <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => { handleDecrypt(report.submissionId); decryptMyReport(); }}
+                    disabled={isDecrypting && selectedSubmission === report.submissionId}
+                    style={{ fontSize: '12px', padding: '8px 12px' }}
+                  >
+                    {isDecrypting && selectedSubmission === report.submissionId ? '⏳ Signing...' : '🔓 Sign & Decrypt'}
                   </Button>
                   {report.canWithdraw && (
-                    <Button variant="success" onClick={() => { window.location.href = `/withdraw/${report.submissionId}`; }} style={{ fontSize: '12px', padding: '8px 16px' }}>
+                    <Button variant="success" onClick={() => router.push(`/withdraw/${report.submissionId}`)} style={{ fontSize: '12px', padding: '8px 16px' }}>
                       Withdraw
                     </Button>
                   )}
                 </div>
               </div>
+              {selectedSubmission === report.submissionId && decryptedReport && (
+                <div style={{ padding: '20px 24px', background: 'rgba(0,255,198,0.04)', borderBottom: '1px solid var(--border)' }}>
+                  {error && <div style={{ color: 'var(--red)', fontSize: '13px', marginBottom: '12px' }}>❌ {error}</div>}
+                  {([
+                    ['Protocol', decryptedReport.protocol],
+                    ['Contract', decryptedReport.contractAddress],
+                    ['Title', decryptedReport.title],
+                    ['Description', decryptedReport.description],
+                    ['PoC', decryptedReport.poc],
+                    ...(decryptedReport.gistLink ? [['Gist', decryptedReport.gistLink]] : []),
+                  ] as [string, string][]).map(([label, value]) => (
+                    <div key={label as string} style={{ marginBottom: '12px' }}>
+                      <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--cyan)', textTransform: 'uppercase', marginBottom: '4px' }}>{label as string}</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{value as string}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              </>
             ))}
 
             {reports.length === 0 && (
@@ -161,7 +168,7 @@ export default function MyReportsPage() {
                 <p style={{ fontSize: '15px', color: 'var(--text-muted)', marginBottom: '24px', maxWidth: '400px', margin: '0 auto 24px' }}>
                   Start contributing to the security of Web3 by submitting your first vulnerability report.
                 </p>
-                <Button variant="primary" onClick={() => { window.location.href = '/'; }}>Browse Programs →</Button>
+                <Button variant="primary" onClick={() => router.push('/')}>Browse Programs →</Button>
               </div>
             )}
           </Card>
