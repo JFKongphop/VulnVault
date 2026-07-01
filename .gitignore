@@ -1,6 +1,10 @@
 # fhevm
 fhevmTemp
 
+# Admin RSA private key — NEVER commit this
+admin_private.pem
+*.pem
+
 # directories
 .coverage_artifacts
 .coverage_cache
