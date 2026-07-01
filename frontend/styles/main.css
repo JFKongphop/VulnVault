@@ -1,0 +1,321 @@
+/* RAXCLAW Design System - VulnVault Bug Bounty Platform */
+
+:root {
+  /* === Backgrounds === */
+  --bg:             #000000;
+  --bg-surface:     rgba(8,8,8,0.96);
+  --bg-elevated:    rgba(14,14,14,0.88);
+  --bg-glass:       rgba(255,255,255,0.02);
+  --bg-input:       rgba(10,10,10,0.98);
+
+  /* === Borders === */
+  --border:         rgba(255,255,255,0.08);
+  --border-strong:  rgba(255,255,255,0.15);
+  --border-glow:    rgba(255,255,255,0.30);
+
+  /* === Accent Colors === */
+  --cyan:           #ffffff;
+  --blue:           #cccccc;
+  --cyan-dim:       rgba(255,255,255,0.40);
+
+  /* === Glows === */
+  --glow-cyan:      rgba(255,255,255,0.08);
+  --glow-blue:      rgba(255,255,255,0.04);
+  --glow-strong:    rgba(255,255,255,0.15);
+
+  /* === Semantic Colors === */
+  --green:          #ffffff;
+  --red:            #ff4466;
+  --yellow:         #ffd60a;
+  --orange:         #ff8800;
+
+  /* === Text === */
+  --text:           #fafafa;
+  --text-muted:     #888888;
+  --text-dim:       #555555;
+
+  /* === Typography === */
+  --font-sans:      'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:      'JetBrains Mono', 'Fira Code', monospace;
+
+  /* === Radii === */
+  --radius-xl:      20px;
+  --radius-lg:      14px;
+  --radius-md:      10px;
+  --radius-sm:      7px;
+}
+
+/* === Reusable Components === */
+
+.glass-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(18px);
+  transition: border-color 0.28s ease, box-shadow 0.28s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 30px var(--glow-cyan);
+}
+
+.section {
+  padding: 96px 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.section-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.section-desc {
+  font-size: 16px;
+  color: var(--text-muted);
+  max-width: 540px;
+  line-height: 1.6;
+  margin-bottom: 32px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+}
+
+@media (max-width: 800px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .section {
+    padding: 64px 20px;
+  }
+  .section-title {
+    font-size: 28px;
+  }
+}
+
+.btn {
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-glass);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+.btn:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 20px var(--glow-cyan);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--bg-glass);
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+.btn-danger {
+  border-color: var(--red);
+  color: var(--red);
+  background: transparent;
+}
+
+.btn-danger:hover {
+  background: var(--red);
+  color: #000;
+}
+
+.btn-success {
+  border-color: var(--green);
+  color: var(--green);
+  background: transparent;
+}
+
+.btn-success:hover {
+  background: var(--green);
+  color: #000;
+}
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+.hash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cyan-dim);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.hash:hover {
+  color: var(--cyan);
+}
+
+.input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--glow-cyan);
+}
+
+.input::placeholder {
+  color: var(--text-dim);
+}
+
+.input-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  transition: border-color 0.2s;
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--glow-cyan);
+}
+
+.code-block {
+  background: #080808;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 22px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #94a3b8;
+}
+
+/* === Animations === */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(255,255,255,0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255,255,255,0.6);
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-up {
+  animation: fadeInUp 0.75s ease;
+}
+
+.animate-fade {
+  animation: fadeIn 0.6s ease;
+}
+
+.loading {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* === Utilities === */
+
+.divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+}
