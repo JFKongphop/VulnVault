@@ -23,16 +23,17 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="section" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
         <div className="section-inner">
-          <div style={{ textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', maxWidth: '1100px', margin: '0 auto' }}>
             <h1 style={{
-              fontSize: 'clamp(64px, 10vw, 112px)',
+              fontSize: 'clamp(32px, 4vw, 54px)',
               fontWeight: 900,
               letterSpacing: '-0.03em',
               color: 'var(--text)',
               marginBottom: '24px',
-              lineHeight: 1
+              lineHeight: 1.15,
+              whiteSpace: 'nowrap',
             }}>
-              Anonymous<br />Bug Bounties
+              Confidential Bug Bounties<br />&amp; Anonymous Whitehat Reputation
             </h1>
             <p style={{
               fontSize: 'clamp(17px, 2.2vw, 22px)',
@@ -41,8 +42,7 @@ export default function HomePage() {
               margin: '0 auto 40px',
               lineHeight: 1.6
             }}>
-              Privacy-preserving bug bounty platform powered by ZK proofs and FHE encryption.
-              Submit vulnerabilities anonymously, withdraw rewards with zero-knowledge proofs.
+              Secure vulnerability reports with <strong style={{ color: 'var(--text)', fontWeight: 700 }}>RSA-OAEP &amp; AES-GCM</strong>. Compute confidential severity, impact, rewards, and whitehat reputation using <strong style={{ color: 'var(--text)', fontWeight: 700 }}>FHE</strong>. Withdraw bounties anonymously with <strong style={{ color: 'var(--text)', fontWeight: 700 }}>Zero-Knowledge Proofs</strong>.
             </p>
             <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <Button variant="primary">
