@@ -79,7 +79,7 @@ export function Navbar() {
           {navLink('/', 'Programs')}
           {navLink('/my-reports', 'My Reports')}
           {navLink('/reputation', 'Reputation')}
-          {navLink('/wrap', 'Wrap Tokens')}
+          {navLink('/wrap', 'Get cUSDT')}
         </div>
 
         {/* Connect Wallet */}
