@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.8",
-    "@zama-fhe/react-sdk": "^3.0.0",
-    "@zama-fhe/sdk": "^3.0.0",
+    "@zama-fhe/react-sdk": "2.5.0",
+    "@zama-fhe/sdk": "2.5.0",
     "clsx": "^2.1.1",
     "fixed-merkle-tree": "^0.7.3",
     "next": "^15.3.0",
