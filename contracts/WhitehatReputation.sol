@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FHE, euint32, euint64, ebool} from "@fhevm/solidity/lib/FHE.sol";
+import {FHE, euint32, euint64, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
 /// @title WhitehatReputation — Confidential reputation scoring via FHE
@@ -71,11 +71,32 @@ contract WhitehatReputation is ZamaEthereumConfig {
   // ── Core: Increment Score
   // ─────────────────────────────────────────────
 
+  /// @notice Called by BugBountyProgram — passes already-internal euint64 handle.
   function incrementScore(
-    bytes32 commitment, 
-    uint8 severity, 
-    uint256 bountyAmount
+    bytes32 commitment,
+    uint8 severity,
+    euint64 bountyAmount
   ) external onlyBugBountyProgram {
+    _incrementScoreInternal(commitment, severity, bountyAmount);
+  }
+
+  /// @notice Test / external-input entry point — converts externalEuint64 then increments.
+  function incrementScoreExternal(
+    bytes32 commitment,
+    uint8 severity,
+    externalEuint64 bountyHandle,
+    bytes calldata inputProof
+  ) external onlyBugBountyProgram {
+    euint64 bountyAmount = FHE.fromExternal(bountyHandle, inputProof);
+    FHE.allowThis(bountyAmount);
+    _incrementScoreInternal(commitment, severity, bountyAmount);
+  }
+
+  function _incrementScoreInternal(
+    bytes32 commitment,
+    uint8 severity,
+    euint64 bountyAmount
+  ) internal {
     if (!isRegistered[commitment]) {
       reputationScores[commitment] = FHE.asEuint32(0);
       totalEarnings[commitment] = FHE.asEuint64(uint64(0));
@@ -87,8 +108,7 @@ contract WhitehatReputation is ZamaEthereumConfig {
     uint32 points = _severityToPoints(severity);
 
     reputationScores[commitment] = FHE.add(reputationScores[commitment], FHE.asEuint32(points));
-
-    totalEarnings[commitment] = FHE.add(totalEarnings[commitment], FHE.asEuint64(uint64(bountyAmount)));
+    totalEarnings[commitment] = FHE.add(totalEarnings[commitment], bountyAmount);
 
     approvedReportCount[commitment]++;
 
