@@ -28,6 +28,9 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   // ── Option 2: Client-Side Encryption Support
   bytes public adminPublicKey; // Admin's RSA public key for encrypting symmetric keys
 
+  /// @notice Plain (unencrypted) bounty amount per submission so the reporter can auto-fetch it at withdrawal.
+  mapping(bytes32 => uint256) public approvedBountyAmount;
+
   struct SubmittedReport {
     bytes32 submissionId;
     bytes32 commitment;
@@ -265,12 +268,14 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   /// @param severity Plaintext severity (admin decrypted off-chain during review)
   /// @param inputProof Input proof for encrypted bounty amount
   /// @param encryptedNotes Admin notes
+  /// @param plainBountyAmount Plain bounty amount (cUSDT) so reporter can auto-fetch at withdrawal
   function approveReport(
     bytes32 submissionId,
     externalEuint64 encBountyAmount,
     uint8 severity,
     bytes calldata inputProof,
-    bytes calldata encryptedNotes
+    bytes calldata encryptedNotes,
+    uint256 plainBountyAmount
   )
     external
     onlyAdmin
@@ -282,13 +287,16 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
     r.encryptedBountyAmount = FHE.fromExternal(encBountyAmount, inputProof);
     r.encryptedAdminNotes = encryptedNotes;
     r.status = ReportStatus.Approved;
+    approvedBountyAmount[submissionId] = plainBountyAmount;
 
     FHE.allowThis(r.encryptedBountyAmount);
     FHE.allow(r.encryptedBountyAmount, address(vault));
     FHE.allow(r.encryptedBountyAmount, r.reporter);
 
     if (address(vault) != address(0)) {
-      vault.lockFunds(programId, submissionId, r.encryptedBountyAmount);
+      // Lock funds under r.commitment (= the ZK nullifier poseidon4(s0,s1,impact,severity))
+      // so that ConfidentialPayouts.withdraw can release them with the same key.
+      vault.lockFunds(programId, r.commitment, r.encryptedBountyAmount);
     }
 
     if (address(merkleTree) != address(0)) {
@@ -296,10 +304,11 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
       merkleTree.insertApprovedLeaf(r.commitment);
     }
 
-    // Notify reputation contract (severity passed as plaintext from admin)
-    // Note: We don't pass bounty amount to reputation to preserve privacy
+    // Notify reputation contract — pass the encrypted bounty handle so
+    // earnings are accumulated confidentially (FHE.add inside reputation).
     if (reputation != address(0)) {
-      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, 0);
+      FHE.allow(r.encryptedBountyAmount, reputation);
+      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, r.encryptedBountyAmount);
     }
 
     emit ReportApproved(submissionId, euint64.unwrap(r.encryptedBountyAmount));
@@ -354,12 +363,13 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
   // ── DisputeResolver Overrides & Admin Override
   // ──────────────────────────────────────────
 
-  function overrideApprove(bytes32 submissionId, externalEuint64 encBountyAmount, uint8 severity, bytes calldata inputProof) external onlyAdmin {
+  function overrideApprove(bytes32 submissionId, externalEuint64 encBountyAmount, uint8 severity, bytes calldata inputProof, uint256 plainBountyAmount) external onlyAdmin {
     SubmittedReport storage r = _submissions[submissionId];
     r.status = ReportStatus.Approved;
     r.frozen = false;
 
     r.encryptedBountyAmount = FHE.fromExternal(encBountyAmount, inputProof);
+    approvedBountyAmount[submissionId] = plainBountyAmount;
     FHE.allowThis(r.encryptedBountyAmount);
     FHE.allow(r.encryptedBountyAmount, r.reporter);
 
@@ -369,7 +379,8 @@ contract BugBountyProgram is ZamaEthereumConfig, IBugBountyProgram {
     }
 
     if (reputation != address(0)) {
-      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, 0);
+      FHE.allow(r.encryptedBountyAmount, reputation);
+      IWhitehatReputation(reputation).incrementScore(r.commitment, severity, r.encryptedBountyAmount);
     }
 
     emit ReportApproved(submissionId, euint64.unwrap(r.encryptedBountyAmount));
