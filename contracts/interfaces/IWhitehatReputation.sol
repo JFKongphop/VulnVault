@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {euint64} from "@fhevm/solidity/lib/FHE.sol";
+
 /// @title IWhitehatReputation — Confidential reputation scoring via FHE
 /// @notice Scores are stored encrypted; only the reporter can decrypt their
 ///         own score. Programs query threshold gates and receive bool only.
 interface IWhitehatReputation {
   /// @notice Increment score after a report is approved.
-  function incrementScore(bytes32 commitment, uint8 severity, uint256 bountyAmount) external;
+  function incrementScore(bytes32 commitment, uint8 severity, euint64 bountyAmount) external;
 
   /// @notice Check whether a commitment meets a minimum reputation threshold.
   /// @return True if score >= minReputation (or minReputation == 0).
