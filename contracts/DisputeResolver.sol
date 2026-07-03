@@ -225,7 +225,8 @@ contract DisputeResolver is ZamaEthereumConfig {
       // Vote result: Reporter wins → Unfreeze report for admin to approve
       IBugBountyProgram(bugBountyProgram).unfreezeReport(d.submissionId);
       if (reputation != address(0)) {
-        IWhitehatReputation(reputation).incrementScore(d.reporterCommitment, 2, 0);
+        // Dispute win: grant points but no earnings (bounty not yet set)
+        IWhitehatReputation(reputation).incrementScore(d.reporterCommitment, 2, FHE.asEuint64(uint64(0)));
       }
       emit OutcomeExecuted(disputeId, true);
     } else {
