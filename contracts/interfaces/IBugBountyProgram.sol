@@ -44,7 +44,8 @@ interface IBugBountyProgram {
     externalEuint64 encBountyAmount,
     uint8 severity,
     bytes calldata inputProof,
-    bytes calldata encryptedNotes
+    bytes calldata encryptedNotes,
+    uint256 plainBountyAmount
   )
     external;
 
@@ -52,7 +53,7 @@ interface IBugBountyProgram {
 
   function decryptMyReport(bytes32 submissionId) external;
 
-  function overrideApprove(bytes32 submissionId, externalEuint64 encBountyAmount, uint8 severity, bytes calldata inputProof) external;
+  function overrideApprove(bytes32 submissionId, externalEuint64 encBountyAmount, uint8 severity, bytes calldata inputProof, uint256 plainBountyAmount) external;
 
   function freezeReport(bytes32 submissionId) external;
 
