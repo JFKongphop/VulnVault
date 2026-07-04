@@ -7,10 +7,12 @@ export function useMyReports() {
   const { address } = useAccount();
 
   // Fetch user's submission IDs
+  // Must pass account so eth_call uses msg.sender = connected wallet
   const { data: submissionIds, isLoading } = useReadContract({
     address: CONTRACTS.BUG_BOUNTY_PROGRAM,
     abi: BUG_BOUNTY_PROGRAM_ABI,
     functionName: 'getMySubmissionIds',
+    account: address,
     query: {
       enabled: !!address,
     },
@@ -31,6 +33,7 @@ export function useMyReportData(submissionId: `0x${string}` | undefined) {
     abi: BUG_BOUNTY_PROGRAM_ABI,
     functionName: 'getMyEncryptedReportData',
     args: submissionId ? [submissionId] : undefined,
+    account: address,
     query: {
       enabled: !!address && !!submissionId,
     },
