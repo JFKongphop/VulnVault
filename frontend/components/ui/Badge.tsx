@@ -43,7 +43,7 @@ export function StatusBadge({ status }: { status: 'Pending' | 'UnderReview' | 'A
   }[status];
   
   return (
-    <Badge style={{ borderColor: config.color, color: config.color, background: 'transparent', border: '1px solid' }}>
+    <Badge style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: config.color, color: config.color, background: 'transparent' }}>
       {config.icon} {status.replace(/([A-Z])/g, ' $1').trim()}
     </Badge>
   );

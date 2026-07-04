@@ -256,6 +256,8 @@ export function DecryptReportModal({
                   color: 'var(--text)',
                   lineHeight: 1.6,
                   whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
                 }}>
                   {decryptedReport.description}
                 </div>
@@ -277,6 +279,8 @@ export function DecryptReportModal({
                   color: 'var(--text)',
                   lineHeight: 1.6,
                   whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word',
                   fontFamily: 'var(--font-mono)',
                   backgroundColor: 'rgba(255, 255, 255, 0.03)',
                   padding: '12px',
@@ -307,6 +311,8 @@ export function DecryptReportModal({
                       fontSize: '14px',
                       color: 'var(--cyan)',
                       textDecoration: 'underline',
+                      wordBreak: 'break-all',
+                      overflowWrap: 'break-word',
                     }}
                   >
                     {decryptedReport.gistLink}
@@ -326,7 +332,7 @@ export function DecryptReportModal({
                   }}>
                     Attachments
                   </div>
-                  <div style={{ fontSize: '14px', color: 'var(--text)' }}>
+                  <div style={{ fontSize: '14px', color: 'var(--text)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                     {decryptedReport.attachments}
                   </div>
                 </div>
