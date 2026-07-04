@@ -27,6 +27,7 @@ export function useAdminDecrypt(submissionId: `0x${string}` | undefined) {
     abi: BUG_BOUNTY_PROGRAM_ABI,
     functionName: 'getEncryptedSymmetricKey',
     args: submissionId ? [submissionId] : undefined,
+    account: address,
     query: {
       enabled: !!address && !!submissionId,
     },
@@ -38,6 +39,7 @@ export function useAdminDecrypt(submissionId: `0x${string}` | undefined) {
     abi: BUG_BOUNTY_PROGRAM_ABI,
     functionName: 'getEncryptedReportData',
     args: submissionId ? [submissionId] : undefined,
+    account: address,
     query: {
       enabled: !!address && !!submissionId,
     },
