@@ -185,13 +185,60 @@ export default function SubmitReportPage() {
                     {secrets.symmetricKey}
                   </code>
                 </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <div style={{
+                      fontSize: '11px',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-dim)',
+                      marginBottom: '8px'
+                    }}>
+                      IMPACT TYPE (ZK Withdrawal)
+                    </div>
+                    <code style={{
+                      display: 'block',
+                      padding: '12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '14px',
+                      color: 'var(--cyan)',
+                    }}>
+                      {secrets.impactType}
+                    </code>
+                  </div>
+                  <div>
+                    <div style={{
+                      fontSize: '11px',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-dim)',
+                      marginBottom: '8px'
+                    }}>
+                      SEVERITY (ZK Withdrawal)
+                    </div>
+                    <code style={{
+                      display: 'block',
+                      padding: '12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '14px',
+                      color: 'var(--cyan)',
+                    }}>
+                      {secrets.severity}
+                    </code>
+                  </div>
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '12px' }}>
                 <Button 
                   variant="primary" 
                   onClick={() => {
-                    const text = `Secret 0 (ZK): ${secrets.secret0}\nSecret 1 (ZK): ${secrets.secret1}\nSymmetric Key: ${secrets.symmetricKey}`;
+                    const text = `Secret 0 (ZK): ${secrets.secret0}\nSecret 1 (ZK): ${secrets.secret1}\nImpact Type (ZK): ${secrets.impactType}\nSeverity (ZK): ${secrets.severity}\nSymmetric Key: ${secrets.symmetricKey}`;
                     navigator.clipboard.writeText(text);
                     alert('All secrets copied to clipboard!');
                   }}
