@@ -1,505 +1,234 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAccount, useReadContract } from 'wagmi';
+import { useAllow, useIsAllowed, useUserDecrypt } from '@zama-fhe/react-sdk';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Hash } from '@/components/ui/Hash';
-import { LoadingOverlay } from '@/components/ui/Loading';
+import { useFundVault } from '@/hooks/useFundVault';
+import { CONTRACTS, BOUNTY_VAULT_ABI, BUG_BOUNTY_PROGRAM_ABI, CONFIDENTIAL_TOKEN_ABI } from '@/lib/contracts';
 
-export default function VaultManagementPage() {
+const NULL_HANDLE = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+function BalanceCard({ label, handle }: { label: string; handle: `0x${string}` | undefined }) {
+  const [clicked, setClicked] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const vaultContracts: [`0x${string}`] = [CONTRACTS.BOUNTY_VAULT];
+  const isHandleValid = !!handle && handle !== NULL_HANDLE;
+
+  const { mutateAsync: allow, isPending: isAllowing } = useAllow();
+  const { data: isAllowed } = useIsAllowed({ contractAddresses: vaultContracts });
+
+  const { data: decrypted, isPending: isDecrypting, isError: isDecryptError } = useUserDecrypt(
+    { handles: [{ handle: handle ?? NULL_HANDLE, contractAddress: CONTRACTS.BOUNTY_VAULT }] },
+    { enabled: clicked && !!isAllowed && isHandleValid },
+  );
+
+  useEffect(() => {
+    if (!isDecrypting || decrypted !== undefined) { setTimedOut(false); return; }
+    const t = setTimeout(() => setTimedOut(true), 60_000);
+    return () => clearTimeout(t);
+  }, [isDecrypting, decrypted]);
+
+  const decryptedValue = handle ? decrypted?.[handle] : undefined;
+
+  let displayValue: string;
+  let displayColor: string;
+  if (decryptedValue !== undefined) {
+    displayValue = (Number(decryptedValue) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' cUSDT';
+    displayColor = 'var(--cyan)';
+  } else if (handle === undefined) {
+    displayValue = '…'; displayColor = 'var(--text-dim)';
+  } else if (!isHandleValid) {
+    displayValue = '0 cUSDT'; displayColor = 'var(--text-muted)';
+  } else if (isDecryptError) {
+    displayValue = '⚠️ No ACL access'; displayColor = 'var(--red, #ff4f4f)';
+  } else if (clicked && isDecrypting && timedOut) {
+    displayValue = '⏱ Oracle slow…'; displayColor = 'var(--yellow)';
+  } else if (clicked && isDecrypting) {
+    displayValue = 'Decrypting…'; displayColor = 'var(--yellow)';
+  } else {
+    displayValue = '🔒 FHE Encrypted'; displayColor = 'var(--yellow)';
+  }
+
+  return (
+    <Card style={{ padding: '24px 20px', textAlign: 'center', flex: 1 }}>
+      <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-dim)', marginBottom: '10px' }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: decryptedValue !== undefined ? '24px' : '18px', fontWeight: 700, color: displayColor, marginBottom: '12px' }}>
+        {displayValue}
+      </div>
+      {isHandleValid && decryptedValue === undefined && !isDecryptError && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+          {!isAllowed && (
+            <button onClick={() => allow([...vaultContracts])} disabled={isAllowing}
+              style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', background: 'rgba(255,200,0,0.08)', border: '1px solid rgba(255,200,0,0.25)', color: 'var(--yellow)', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', opacity: isAllowing ? 0.5 : 1 }}>
+              {isAllowing ? 'Authorizing…' : '① Authorize'}
+            </button>
+          )}
+          {isAllowed && (
+            <button
+              onClick={() => { setTimedOut(false); setClicked(false); setTimeout(() => setClicked(true), 50); }}
+              disabled={isDecrypting && !timedOut}
+              style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', background: 'rgba(0,255,198,0.08)', border: '1px solid rgba(0,255,198,0.2)', color: 'var(--cyan)', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', opacity: (isDecrypting && !timedOut) ? 0.5 : 1 }}>
+              {isDecrypting && !timedOut ? 'Decrypting…' : timedOut ? '↺ Retry' : '🔓 Decrypt'}
+            </button>
+          )}
+          {isDecrypting && !timedOut && (
+            <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>Waiting for Zama oracle…</div>
+          )}
+          {timedOut && (
+            <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', maxWidth: '160px' }}>Oracle timeout — click Retry</div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function VaultPage() {
+  const { isConnected, address } = useAccount();
   const router = useRouter();
-  const [depositAmount, setDepositAmount] = useState('');
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [amount, setAmount] = useState('2000');
 
-  // Mock vault data
-  const vaultData = {
-    address: '0x9876543210987654321098765432109876543210',
-    availableBalance: 375000, // USDT (in cents)
-    lockedBalance: 125000,
-    totalBalance: 500000,
-    pendingWithdrawal: 0,
-    timelockDuration: '7 days',
-    lastDeposit: '2026-06-20',
-    adminAddress: '0x1234567890123456789012345678901234567890'
-  };
+  const { step, error, txHash, fund, reset } = useFundVault();
 
-  const transactions = [
-    {
-      id: 1,
-      type: 'Deposit',
-      amount: 50000,
-      from: '0x1234567890123456789012345678901234567890',
-      date: '2026-06-20',
-      txHash: '0xabcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234'
-    },
-    {
-      id: 2,
-      type: 'Lock',
-      amount: 25000,
-      reason: 'Report #42 Approved',
-      date: '2026-06-18',
-      txHash: '0xefgh5678901234efgh5678901234efgh5678901234efgh5678901234efgh5678'
-    },
-    {
-      id: 3,
-      type: 'Withdrawal',
-      amount: 10000,
-      reason: 'Anonymous Claim',
-      date: '2026-06-15',
-      txHash: '0xijkl9012345678ijkl9012345678ijkl9012345678ijkl9012345678ijkl9012'
-    },
-    {
-      id: 4,
-      type: 'Deposit',
-      amount: 100000,
-      from: '0x1234567890123456789012345678901234567890',
-      date: '2026-06-10',
-      txHash: '0xmnop3456789012mnop3456789012mnop3456789012mnop3456789012mnop3456'
-    },
-  ];
+  const { data: programData } = useReadContract({
+    address: CONTRACTS.BUG_BOUNTY_PROGRAM,
+    abi: BUG_BOUNTY_PROGRAM_ABI,
+    functionName: 'programId',
+  });
+  const pid = programData !== undefined ? (programData as bigint) : undefined;
 
-  const lockedFunds = [
-    { id: 1, reportId: 42, amount: 50000, date: '2026-06-20', status: 'Locked' },
-    { id: 2, reportId: 40, amount: 25000, date: '2026-06-18', status: 'Locked' },
-    { id: 3, reportId: 38, amount: 30000, date: '2026-06-15', status: 'Locked' },
-    { id: 4, reportId: 35, amount: 20000, date: '2026-06-12', status: 'Locked' },
-  ];
+  const { data: availableRaw } = useReadContract({
+    address: CONTRACTS.BOUNTY_VAULT,
+    abi: BOUNTY_VAULT_ABI,
+    functionName: 'getAvailableBalance',
+    args: pid !== undefined ? [pid] : undefined,
+    query: { enabled: pid !== undefined },
+  });
+  const { data: lockedRaw } = useReadContract({
+    address: CONTRACTS.BOUNTY_VAULT,
+    abi: BOUNTY_VAULT_ABI,
+    functionName: 'getLockedBalance',
+    args: pid !== undefined ? [pid] : undefined,
+    query: { enabled: pid !== undefined },
+  });
 
-  const handleDeposit = () => {
-    if (!depositAmount || parseFloat(depositAmount) <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-    setIsProcessing(true);
-    setTimeout(() => {
-      alert(`Deposited $${depositAmount} to vault!`);
-      setDepositAmount('');
-      setIsProcessing(false);
-    }, 2000);
-  };
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return <div><Navbar /></div>;
 
-  const handleInitiateWithdrawal = () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
-      alert('Please enter a valid amount');
-      return;
-    }
-    if (parseFloat(withdrawAmount) * 100 > vaultData.availableBalance) {
-      alert('Insufficient available balance');
-      return;
-    }
-    setIsProcessing(true);
-    setTimeout(() => {
-      alert(`Withdrawal initiated. Funds will be available after ${vaultData.timelockDuration} timelock.`);
-      setWithdrawAmount('');
-      setIsProcessing(false);
-    }, 2000);
+  const isFunding = step === 'encrypting' || step === 'confirming';
+  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
+  const labelStyle: React.CSSProperties = { ...mono, fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-dim)', display: 'block', marginBottom: '8px' };
+  const stepLabel: Record<typeof step, string> = {
+    idle: 'Fund Vault',
+    encrypting: 'Encrypting…',
+    confirming: 'Confirm in MetaMask…',
+    done: '✓ Funded!',
+    error: 'Try Again',
   };
 
   return (
-    <div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Navbar />
+      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '48px 24px' }}>
 
-      {isProcessing && <LoadingOverlay message="Processing transaction..." />}
+        <button onClick={() => router.push('/admin')} style={{ ...mono, fontSize: '12px', color: 'var(--text-dim)', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '24px', padding: 0 }}>
+          ← Back to Dashboard
+        </button>
+        <h1 style={{ fontSize: '36px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Vault Management</h1>
+        <p style={{ ...mono, fontSize: '12px', color: 'var(--text-muted)', marginBottom: '40px' }}>{CONTRACTS.BOUNTY_VAULT}</p>
 
-      <section className="section" style={{ paddingTop: '64px', paddingBottom: '80px' }}>
-        <div className="section-inner">
-          <div style={{ marginBottom: '40px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <Button 
-                variant="secondary"
-                onClick={() => router.push('/admin')}
-                style={{ padding: '8px 16px', fontSize: '13px' }}
-              >
-                ← Back
-              </Button>
-              <h1 style={{
-                fontSize: 'clamp(32px, 5vw, 48px)',
-                fontWeight: 800,
-                color: 'var(--text)'
-              }}>
-                Vault Management
-              </h1>
-            </div>
-            <p style={{
-              fontSize: '15px',
-              color: 'var(--text-muted)',
-              lineHeight: 1.6,
-              marginBottom: '8px'
-            }}>
-              Manage bounty vault funds with anti-rug timelock protection.
-            </p>
-            <Hash value={vaultData.address} />
-          </div>
-
-          {/* Balance Cards */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '20px',
-            marginBottom: '40px'
-          }}>
-            <Card style={{ padding: '28px' }}>
-              <div style={{
-                fontSize: '11px',
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                TOTAL BALANCE
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '44px',
-                fontWeight: 700,
-                color: 'var(--text)',
-                marginBottom: '8px'
-              }}>
-                ${(vaultData.totalBalance / 100).toLocaleString()}
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--text-muted)',
-                fontFamily: 'var(--font-mono)'
-              }}>
-                Available + Locked
-              </div>
-            </Card>
-
-            <Card style={{ padding: '28px' }}>
-              <div style={{
-                fontSize: '11px',
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                AVAILABLE
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '44px',
-                fontWeight: 700,
-                color: 'var(--cyan)',
-                marginBottom: '8px'
-              }}>
-                ${(vaultData.availableBalance / 100).toLocaleString()}
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--text-muted)',
-                fontFamily: 'var(--font-mono)'
-              }}>
-                Ready for approvals
-              </div>
-            </Card>
-
-            <Card style={{ padding: '28px' }}>
-              <div style={{
-                fontSize: '11px',
-                fontFamily: 'var(--font-mono)',
-                color: 'var(--text-dim)',
-                marginBottom: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em'
-              }}>
-                LOCKED
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '44px',
-                fontWeight: 700,
-                color: 'var(--yellow)',
-                marginBottom: '8px'
-              }}>
-                ${(vaultData.lockedBalance / 100).toLocaleString()}
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--text-muted)',
-                fontFamily: 'var(--font-mono)'
-              }}>
-                {lockedFunds.length} reports
-              </div>
-            </Card>
-          </div>
-
-          <div className="grid-2" style={{ gap: '24px', marginBottom: '40px' }}>
-            {/* Deposit Card */}
-            <Card style={{ padding: '32px' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                color: 'var(--text-dim)',
-                marginBottom: '20px'
-              }}>
-                💰 DEPOSIT FUNDS
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <Input
-                  label="Amount (USDT)"
-                  placeholder="Enter amount to deposit..."
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  type="number"
-                  mono
-                />
-                <div style={{
-                  marginTop: '12px',
-                  fontSize: '12px',
-                  color: 'var(--text-dim)',
-                  fontFamily: 'var(--font-mono)'
-                }}>
-                  Funds will be available immediately for report approvals
-                </div>
-              </div>
-
-              <Button
-                variant="success"
-                onClick={handleDeposit}
-                disabled={!depositAmount}
-                style={{ width: '100%', padding: '16px' }}
-              >
-                Deposit to Vault
-              </Button>
-            </Card>
-
-            {/* Withdraw Card */}
-            <Card style={{ padding: '32px' }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                color: 'var(--text-dim)',
-                marginBottom: '20px'
-              }}>
-                🔒 WITHDRAW FUNDS
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <Input
-                  label="Amount (USDT)"
-                  placeholder="Enter amount to withdraw..."
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(e.target.value)}
-                  type="number"
-                  mono
-                />
-                <div style={{
-                  marginTop: '12px',
-                  padding: '12px',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--yellow)',
-                  borderRadius: 'var(--radius-md)'
-                }}>
-                  <div style={{
-                    fontSize: '11px',
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--yellow)',
-                    marginBottom: '6px'
-                  }}>
-                    ⏱️ TIMELOCK: {vaultData.timelockDuration}
-                  </div>
-                  <div style={{
-                    fontSize: '12px',
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.5
-                  }}>
-                    Withdrawal requires {vaultData.timelockDuration} waiting period for security
-                  </div>
-                </div>
-              </div>
-
-              <Button
-                variant="danger"
-                onClick={handleInitiateWithdrawal}
-                disabled={!withdrawAmount}
-                style={{ width: '100%', padding: '16px' }}
-              >
-                Initiate Withdrawal
-              </Button>
-            </Card>
-          </div>
-
-          {/* Locked Funds Table */}
-          <Card style={{ padding: 0, overflow: 'hidden', marginBottom: '32px' }}>
-            <div style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid var(--border)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: 'var(--text-dim)'
-            }}>
-              LOCKED FUNDS BY REPORT
-            </div>
-
-            {/* Table Header */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '120px 1fr 180px 120px',
-              gap: '16px',
-              padding: '16px 24px',
-              borderBottom: '1px solid var(--border)',
-              fontSize: '11px',
-              fontFamily: 'var(--font-mono)',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              color: 'var(--text-dim)',
-              letterSpacing: '0.1em'
-            }}>
-              <div>Report ID</div>
-              <div>Amount</div>
-              <div>Locked Date</div>
-              <div>Status</div>
-            </div>
-
-            {/* Table Rows */}
-            {lockedFunds.map((fund) => (
-              <div
-                key={fund.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '120px 1fr 180px 120px',
-                  gap: '16px',
-                  padding: '16px 24px',
-                  borderBottom: '1px solid var(--border)',
-                  alignItems: 'center'
-                }}
-              >
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  color: 'var(--text)'
-                }}>
-                  #{fund.reportId}
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  color: 'var(--yellow)'
-                }}>
-                  ${(fund.amount / 100).toLocaleString()}
-                </div>
-                <div style={{
-                  fontSize: '13px',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-muted)'
-                }}>
-                  {fund.date}
-                </div>
-                <div>
-                  <span style={{
-                    padding: '4px 12px',
-                    background: 'rgba(255, 210, 10, 0.1)',
-                    border: '1px solid var(--yellow)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '11px',
-                    fontFamily: 'var(--font-mono)',
-                    fontWeight: 600,
-                    color: 'var(--yellow)'
-                  }}>
-                    {fund.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </Card>
-
-          {/* Transaction History */}
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid var(--border)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: 'var(--text-dim)'
-            }}>
-              TRANSACTION HISTORY
-            </div>
-
-            {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                style={{
-                  padding: '20px 24px',
-                  borderBottom: '1px solid var(--border)',
-                  transition: 'background 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  marginBottom: '12px'
-                }}>
-                  <div>
-                    <div style={{
-                      fontSize: '15px',
-                      fontWeight: 600,
-                      color: 'var(--text)',
-                      marginBottom: '4px'
-                    }}>
-                      {tx.type}
-                    </div>
-                    <div style={{
-                      fontSize: '13px',
-                      color: 'var(--text-muted)',
-                      marginBottom: '8px'
-                    }}>
-                      {tx.reason || (tx.from && `From: ${tx.from.slice(0, 10)}...`)}
-                    </div>
-                    <Hash value={tx.txHash} />
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '20px',
-                      fontWeight: 700,
-                      color: tx.type === 'Deposit' ? 'var(--green)' : tx.type === 'Withdrawal' ? 'var(--red)' : 'var(--yellow)',
-                      marginBottom: '4px'
-                    }}>
-                      {tx.type === 'Deposit' ? '+' : '-'}${(tx.amount / 100).toLocaleString()}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-dim)'
-                    }}>
-                      {tx.date}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </Card>
+        {/* Balances */}
+        <div style={{ display: 'flex', gap: '16px', marginBottom: '40px' }}>
+          <BalanceCard label="Available Balance" handle={availableRaw as `0x${string}` | undefined} />
+          <BalanceCard label="Locked Funds" handle={lockedRaw as `0x${string}` | undefined} />
         </div>
-      </section>
+
+        {/* Fund Vault */}
+        <Card style={{ padding: '32px', marginBottom: '24px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px' }}>Deposit cUSDT to Vault</h2>
+          <p style={{ ...mono, fontSize: '12px', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: 1.7 }}>
+            The amount is FHE-encrypted client-side before transfer. The vault's <code>onConfidentialTransferReceived</code> callback updates the encrypted available balance automatically.
+          </p>
+
+          <div style={{ background: 'rgba(0,255,198,0.04)', border: '1px solid rgba(0,255,198,0.12)', borderRadius: '8px', padding: '14px 18px', marginBottom: '24px' }}>
+            <div style={{ ...mono, fontSize: '11px', fontWeight: 600, color: 'var(--cyan)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Flow</div>
+            <ol style={{ ...mono, fontSize: '12px', color: 'var(--text-muted)', margin: 0, paddingLeft: '18px', lineHeight: 2 }}>
+              <li>Amount encrypted → <code>externalEuint64</code> handle + proof</li>
+              <li><code>cUSDT.confidentialTransferAndCall(vault, encAmount, proof, &quot;0x&quot;)</code></li>
+              <li>Vault receives tokens → <code>availableBalance += encAmount</code></li>
+              <li>Admin can now approve bounties up to this amount</li>
+            </ol>
+          </div>
+
+          {step === 'done' ? (
+            <div style={{ textAlign: 'center', padding: '16px' }}>
+              <div style={{ fontSize: '28px', marginBottom: '10px' }}>✓</div>
+              <div style={{ ...mono, fontSize: '14px', color: 'var(--cyan)', marginBottom: '14px' }}>Vault funded successfully</div>
+              {txHash && (
+                <div style={{ ...mono, fontSize: '11px', color: 'var(--text-dim)', marginBottom: '18px', wordBreak: 'break-all' }}>
+                  tx:{' '}
+                  <a href={`https://sepolia.etherscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cyan)' }}>
+                    {txHash.slice(0, 18)}…{txHash.slice(-8)}
+                  </a>
+                </div>
+              )}
+              <Button variant="secondary" onClick={reset}>Fund Again</Button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Amount (cUSDT)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="100"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    disabled={isFunding}
+                    placeholder="e.g. 2000"
+                    style={{ width: '100%', padding: '12px 16px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)', fontSize: '16px', ...mono, outline: 'none', boxSizing: 'border-box', opacity: isFunding ? 0.6 : 1 }}
+                  />
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={() => fund(amount)}
+                  disabled={isFunding || !isConnected || !amount || Number(amount) <= 0}
+                  style={{ padding: '12px 28px', whiteSpace: 'nowrap', opacity: isFunding ? 0.7 : 1 }}
+                >
+                  {stepLabel[step]}
+                </Button>
+              </div>
+              {step === 'encrypting' && (
+                <div style={{ marginTop: '10px', ...mono, fontSize: '11px', color: 'var(--text-dim)' }}>FHE-encrypting amount client-side…</div>
+              )}
+              {step === 'confirming' && (
+                <div style={{ marginTop: '10px', ...mono, fontSize: '11px', color: 'var(--text-dim)' }}>Check MetaMask to confirm the transaction.</div>
+              )}
+            </>
+          )}
+
+          {error && (
+            <div style={{ marginTop: '14px', padding: '12px 16px', background: 'rgba(255,79,79,0.08)', border: '1px solid rgba(255,79,79,0.25)', borderRadius: '8px', ...mono, fontSize: '12px', color: '#ff6b6b' }}>
+              ⚠ {error}
+            </div>
+          )}
+        </Card>
+
+        <div style={{ ...mono, fontSize: '11px', color: 'var(--text-dim)', lineHeight: 2 }}>
+          <div>cUSDT: <span style={{ color: 'var(--text-muted)' }}>{CONTRACTS.CONFIDENTIAL_TOKEN}</span></div>
+          <div>BugBountyProgram: <span style={{ color: 'var(--text-muted)' }}>{CONTRACTS.BUG_BOUNTY_PROGRAM}</span></div>
+          <div>Need more cUSDT? <a href="/wrap" style={{ color: 'var(--cyan)' }}>Mint on the Wrap page →</a></div>
+        </div>
+
+      </div>
     </div>
   );
 }
