@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSignMessage } from 'wagmi';
 import { useEncrypt } from '@zama-fhe/react-sdk';
+import { bytesToHex } from 'viem';
 import { CONTRACTS, BUG_BOUNTY_PROGRAM_ABI } from '@/lib/contracts';
 import { generateSecrets, generateCommitment } from '@/lib/poseidon';
 import { BugReportEncryption, toHexString } from '@/lib/encryption';
@@ -25,7 +26,9 @@ export function useSubmitReport() {
   const [secrets, setSecrets] = useState<{ 
     secret0: bigint; 
     secret1: bigint;
-    symmetricKey: string; // Backup for report decryption
+    symmetricKey: string;
+    impactType: number;
+    severity: number;
   } | null>(null);
 
   // FHE hooks
@@ -86,10 +89,9 @@ export function useSubmitReport() {
         contractAddress: CONTRACTS.BUG_BOUNTY_PROGRAM,
         userAddress: address,
       });
-      // encryptedValues and inputProof are already 0x-prefixed hex strings
-      const encryptedImpact = enc.encryptedValues[0]!;
-      const encryptedSeverity = enc.encryptedValues[1]!;
-      const inputProof = enc.inputProof;
+      const encryptedImpact = bytesToHex(enc.handles[0]!);
+      const encryptedSeverity = bytesToHex(enc.handles[1]!);
+      const inputProof = bytesToHex(enc.inputProof);
 
       // Step 8: Generate commitment for ZK withdrawal
       const commitment = generateCommitment(
@@ -104,6 +106,8 @@ export function useSubmitReport() {
         secret0: newSecrets.secret0,
         secret1: newSecrets.secret1,
         symmetricKey: reportEncryption.getSymmetricKeyHex(),
+        impactType: params.impactType,
+        severity: params.severity,
       });
 
       setIsEncrypting(false);
@@ -113,6 +117,7 @@ export function useSubmitReport() {
         address: CONTRACTS.BUG_BOUNTY_PROGRAM,
         abi: BUG_BOUNTY_PROGRAM_ABI,
         functionName: 'submitReport',
+        gas: 15_000_000n,
         args: [
           `0x${commitment.toString(16).padStart(64, '0')}`,
           toHexString(encryptedReport.encryptedProtocol),
