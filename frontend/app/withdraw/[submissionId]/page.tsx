@@ -2,14 +2,16 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useReadContract } from 'wagmi';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { LoadingSpinner, LoadingOverlay } from '@/components/ui/Loading';
+import { LoadingOverlay } from '@/components/ui/Loading';
 import { Hash } from '@/components/ui/Hash';
 import { SeverityBadge } from '@/components/ui/Badge';
 import { useWithdraw } from '@/hooks/useWithdraw';
+import { CONTRACTS, BUG_BOUNTY_PROGRAM_ABI } from '@/lib/contracts';
 
 export default function WithdrawPage() {
   const params = useParams();
@@ -22,38 +24,51 @@ export default function WithdrawPage() {
   const [impactType, setImpactType] = useState('1');
   const [severity, setSeverity] = useState('2');
   const [recipientAddress, setRecipientAddress] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Auto-fetch bounty amount from contract
+  const { data: rawBountyAmount } = useReadContract({
+    address: CONTRACTS.BUG_BOUNTY_PROGRAM,
+    abi: BUG_BOUNTY_PROGRAM_ABI,
+    functionName: 'approvedBountyAmount',
+    args: [submissionId as `0x${string}`],
+    query: { enabled: !!submissionId },
+  });
+  // Convert from micro-USDT (6 decimals) to display string e.g. "1345"
+  const bountyAmount = rawBountyAmount
+    ? (Number(rawBountyAmount) / 1_000_000).toString()
+    : '';
 
   // programId for this submission — in production, fetch from contract
   const programId = BigInt(0);
-  const { withdraw, isGeneratingProof, isPending, isSuccess, currentRoot } = useWithdraw(programId);
-
-  // Mock submission data
-  const submission = {
-    id: submissionId,
-    program: 'DeFi Protocol Alpha',
-    programAddress: '0x1234567890123456789012345678901234567890',
-    severity: 4,
-    bountyAmount: '$50,000',
-    approvedDate: '2026-06-20'
-  };
+  const { withdraw, isGeneratingProof, proofStatus, isPending, isSuccess, currentRoot } = useWithdraw(programId);
 
   const handleGenerateProof = async () => {
     if (!secret0 || !secret1 || !recipientAddress) {
-      alert('Please fill in all fields');
+      setErrorMsg('Please fill in all fields');
       return;
     }
+    if (!bountyAmount || bountyAmount === '0') {
+      setErrorMsg('Bounty amount not found. Make sure this submission has been approved.');
+      return;
+    }
+    setErrorMsg('');
 
     try {
+      // Amount in micro-USDT (6 decimals)
+      const amountMicro = BigInt(Math.round(parseFloat(bountyAmount) * 1_000_000));
       await withdraw({
         secret0: BigInt(secret0),
         secret1: BigInt(secret1),
         impactType: parseInt(impactType),
         severity: parseInt(severity),
         recipient: recipientAddress as `0x${string}`,
+        amount: amountMicro,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Withdrawal failed:', error);
-      alert('Withdrawal failed. Please verify your secrets and try again.');
+      const msg = error instanceof Error ? error.message : String(error);
+      setErrorMsg(msg || 'Withdrawal failed. Please verify your secrets and try again.');
     }
   };
 
@@ -95,15 +110,7 @@ export default function WithdrawPage() {
                   color: 'var(--cyan)',
                   marginBottom: '16px'
                 }}>
-                  {submission.bountyAmount}
-                </div>
-                <div style={{
-                  fontSize: '11px',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-dim)',
-                  marginBottom: '8px'
-                }}>
-                  RECIPIENT
+                  {bountyAmount} cUSDT
                 </div>
                 <Hash value={recipientAddress} short={false} />
               </Card>
@@ -153,8 +160,8 @@ export default function WithdrawPage() {
       <Navbar />
 
       {(isGeneratingProof || isPending) && (
-        <LoadingOverlay 
-          message={isGeneratingProof ? 'Generating ZK proof...' : 'Submitting withdrawal...'} 
+        <LoadingOverlay
+          message={isGeneratingProof ? (proofStatus || 'Generating ZK proof…') : 'Submitting withdrawal…'}
         />
       )}
 
@@ -196,12 +203,12 @@ export default function WithdrawPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Program</span>
                 <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>
-                  {submission.program}
+                  VulnVault Bug Bounty Program
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Severity</span>
-                <SeverityBadge level={submission.severity as 1 | 2 | 3 | 4} />
+                <SeverityBadge level={parseInt(severity) as 1 | 2 | 3 | 4} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Bounty Amount</span>
@@ -211,7 +218,7 @@ export default function WithdrawPage() {
                   fontWeight: 700,
                   color: 'var(--cyan)'
                 }}>
-                  {submission.bountyAmount}
+                  {bountyAmount} cUSDT
                 </span>
               </div>
             </div>
@@ -293,7 +300,7 @@ export default function WithdrawPage() {
                 />
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
+              <div style={{ marginBottom: '20px' }}>
                 <Input
                   label="Severity"
                   type="number"
@@ -306,10 +313,26 @@ export default function WithdrawPage() {
                 />
               </div>
 
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '4px' }}>Bounty Amount (cUSDT)</div>
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  fontSize: '20px',
+                  fontWeight: 700,
+                  color: bountyAmount ? 'var(--text)' : 'var(--text-dim)',
+                  fontFamily: 'var(--font-mono)',
+                }}>
+                  {bountyAmount ? `${bountyAmount} cUSDT` : 'Loading...'}
+                </div>
+              </div>
+
               <Button
                 variant="primary"
                 onClick={() => setStep(2)}
-                disabled={!secret0 || !secret1}
+                disabled={!secret0 || !secret1 || !bountyAmount || bountyAmount === '0'}
                 style={{ width: '100%' }}
               >
                 Continue →
@@ -423,7 +446,7 @@ export default function WithdrawPage() {
                       fontWeight: 700,
                       color: 'var(--cyan)'
                     }}>
-                      {submission.bountyAmount}
+                      {bountyAmount} cUSDT
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -469,6 +492,22 @@ export default function WithdrawPage() {
                   <li>Withdrawal address is completely private</li>
                 </ul>
               </div>
+
+              {errorMsg && (
+                <div style={{
+                  padding: '14px 18px',
+                  background: 'rgba(255, 80, 80, 0.1)',
+                  border: '1px solid rgba(255, 80, 80, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '16px',
+                  fontSize: '13px',
+                  color: '#ff5050',
+                  fontFamily: 'var(--font-mono)',
+                  wordBreak: 'break-word',
+                }}>
+                  ⚠ {errorMsg}
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: '12px' }}>
                 <Button
