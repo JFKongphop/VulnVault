@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useReadContract } from 'wagmi';
 import { Navbar } from '@/components/Navbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -12,16 +13,36 @@ import { LoadingOverlay } from '@/components/ui/Loading';
 import { DecryptReportModal } from '@/components/DecryptReportModal';
 import { useAdminDecrypt } from '@/hooks/useAdminDecrypt';
 import { useReviewReport } from '@/hooks/useReviewReport';
+import { CONTRACTS, BUG_BOUNTY_PROGRAM_ABI } from '@/lib/contracts';
+
+const STATUS_LABELS = ['Pending', 'UnderReview', 'Approved', 'Rejected', 'Withdrawn'] as const;
 
 export default function AdminReviewPage() {
   const params = useParams();
   const router = useRouter();
   const submissionId = params.submissionId as `0x${string}`;
 
+  const [mounted, setMounted] = useState(false);
   const [showDecryptModal, setShowDecryptModal] = useState(false);
   const [bountyAmount, setBountyAmount] = useState('');
   const [finalSeverity, setFinalSeverity] = useState<number>(3);
   const [notes, setNotes] = useState('');
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Fetch real on-chain submission meta
+  const { data: meta } = useReadContract({
+    address: CONTRACTS.BUG_BOUNTY_PROGRAM,
+    abi: BUG_BOUNTY_PROGRAM_ABI,
+    functionName: 'getSubmissionMeta',
+    args: [submissionId],
+    query: { enabled: !!submissionId },
+  });
+  const statusIndex = meta ? Number((meta as [bigint, number, boolean, boolean])[1]) : 0;
+  const currentStatus = STATUS_LABELS[statusIndex] ?? 'Pending';
+  const submittedAt = meta ? new Date(Number((meta as [bigint, number, boolean, boolean])[0]) * 1000).toLocaleDateString() : '…';
+  const isPending = currentStatus === 'Pending';
+  const isFinal = currentStatus === 'Approved' || currentStatus === 'Rejected';
 
   const {
     decryptedReport,
@@ -46,8 +67,8 @@ export default function AdminReviewPage() {
     commitment: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
     severity: 4,
     impactType: 'SmartContract',
-    submittedDate: '2026-06-29',
-    status: 'Pending' as const,
+    submittedDate: submittedAt,
+    status: currentStatus,
   };
 
   const handleDecryptWithKey = async (adminPrivateKey: string) => {
@@ -75,7 +96,7 @@ export default function AdminReviewPage() {
     
     try {
       const amountInWei = BigInt(Math.floor(parseFloat(bountyAmount) * 1e6)); // Assuming 6 decimals for USDT
-      await approveReport(submissionId, amountInWei, finalSeverity, notes);
+      await approveReport(submissionId, amountInWei, finalSeverity, notes, amountInWei);
     } catch (err) {
       console.error('Failed to approve report:', err);
       alert('Failed to approve report');
@@ -103,7 +124,7 @@ export default function AdminReviewPage() {
     <div>
       <Navbar />
 
-      {(isReviewPending || isLoadingData) && <LoadingOverlay message="Processing..." />}
+      {mounted && (isReviewPending || isLoadingData) && <LoadingOverlay message="Processing..." />}
 
       <DecryptReportModal
         isOpen={showDecryptModal}
@@ -147,9 +168,9 @@ export default function AdminReviewPage() {
             </div>
           </div>
 
-          <div className="grid-2" style={{ gap: '24px' }}>
+          <div className="grid-2" style={{ gap: '24px', alignItems: 'start', gridTemplateColumns: '1fr 320px' }}>
             {/* Left Column - Report Details */}
-            <div>
+            <div style={{ minWidth: 0 }}>
               {/* Metadata Card */}
               <Card style={{ padding: '24px', marginBottom: '24px' }}>
                 <div style={{
@@ -287,7 +308,7 @@ export default function AdminReviewPage() {
                         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
                           Description
                         </div>
-                        <div style={{ fontSize: '14px', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                        <div style={{ fontSize: '14px', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                           {decryptedReport.description}
                         </div>
                       </div>
@@ -300,6 +321,8 @@ export default function AdminReviewPage() {
                           color: 'var(--text)',
                           lineHeight: 1.6,
                           whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
                           fontFamily: 'var(--font-mono)',
                           backgroundColor: 'rgba(255, 255, 255, 0.03)',
                           padding: '12px',
@@ -314,7 +337,7 @@ export default function AdminReviewPage() {
                           <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
                             Gist Link
                           </div>
-                          <a href={decryptedReport.gistLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: '14px', color: 'var(--cyan)', textDecoration: 'underline' }}>
+                          <a href={decryptedReport.gistLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: '14px', color: 'var(--cyan)', textDecoration: 'underline', wordBreak: 'break-all', overflowWrap: 'break-word' }}>
                             {decryptedReport.gistLink}
                           </a>
                         </div>
@@ -326,7 +349,7 @@ export default function AdminReviewPage() {
             </div>
 
             {/* Right Column - Actions */}
-            <div>
+            <div style={{ position: 'sticky', top: '80px' }}>
               {/* Decision Card */}
               <Card style={{ padding: '24px', marginBottom: '24px' }}>
                 <div style={{
@@ -426,7 +449,7 @@ export default function AdminReviewPage() {
                         variant="success"
                         onClick={handleApprove}
                         style={{ width: '100%', padding: '16px' }}
-                        disabled={!bountyAmount || isReviewPending}
+                        disabled={!bountyAmount || isReviewPending || isFinal}
                       >
                         ✓ Approve & Lock Funds
                       </Button>
@@ -434,7 +457,7 @@ export default function AdminReviewPage() {
                         variant="danger"
                         onClick={handleReject}
                         style={{ width: '100%', padding: '16px' }}
-                        disabled={isReviewPending}
+                        disabled={isReviewPending || isFinal}
                       >
                         ❌ Reject Report
                       </Button>
@@ -470,10 +493,10 @@ export default function AdminReviewPage() {
                   <Button 
                     variant="secondary"
                     onClick={handleMarkUnderReview}
-                    style={{ width: '100%', padding: '12px' }}
-                    disabled={isReviewPending}
+                    style={{ width: '100%', padding: '12px', opacity: !isPending ? 0.4 : 1 }}
+                    disabled={isReviewPending || !isPending}
                   >
-                    👀 Mark as Under Review
+                    {currentStatus === 'UnderReview' ? '✓ Already Under Review' : '👀 Mark as Under Review'}
                   </Button>
 
                   <Button 
