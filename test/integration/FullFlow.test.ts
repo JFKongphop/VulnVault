@@ -141,6 +141,7 @@ async function fheSubmit(
     encryptedReport.encryptedGistLink,
     encryptedReport.encryptedAttachments,
     encryptedSymmetricKey,
+    encryptedSymmetricKey, // encryptedSymmetricKeyForReporter (same key for test)
   );
   return (
     (await tx.wait())?.logs.find(
@@ -234,8 +235,9 @@ describe("FullFlow Integration", function () {
 
     // 🔑 STEP 1: Generate ZK proof secrets (reporter keeps these private)
     console.log('🔑 Step 1: Reporter generates secret parameters');
-    const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
-    const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
+    const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+    const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
+    const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
     const impactType = 1n; // SmartContract
     const severity = 2n;   // High
     
@@ -278,7 +280,7 @@ describe("FullFlow Integration", function () {
     inpApprove.add64(Number(bounty));
     const { handles: approveHandles, inputProof: approveProof } = await inpApprove.encrypt();
     
-    await bb.connect(s[1]).approveReport(sid, approveHandles[0], Number(severity), approveProof, "0x");
+    await bb.connect(s[1]).approveReport(sid, approveHandles[0], Number(severity), approveProof, "0x", 0n);
     console.log('  ✅ Report approved, bounty locked');
     console.log('  ✅ Commitment leaf inserted into Merkle tree');
     console.log('  Merkle tree nextIndex:', (await merkleTree.nextIndex()).toString());
@@ -427,7 +429,7 @@ describe("FullFlow Integration", function () {
     const inpApprove = fhevm.createEncryptedInput(bbAddr, s[1].address);
     inpApprove.add64(Number(bounty));
     const { handles: approveHandles, inputProof: approveProof } = await inpApprove.encrypt();
-    await bb.connect(s[1]).approveReport(sid, approveHandles[0], 3, approveProof, "0x");
+    await bb.connect(s[1]).approveReport(sid, approveHandles[0], 3, approveProof, "0x", 0n);
     expect((await bb.getSubmissionMeta(sid))[1]).to.equal(2);
 
     // Withdraw with ZK proof — tested separately in BountyClaimVerifier.test.ts
@@ -560,7 +562,7 @@ describe("FullFlow Integration", function () {
       const inp = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inp.add64(Number(bounty));
       const { handles, inputProof } = await inp.encrypt();
-      await bb.connect(s[1]).approveReport(sid, handles[0], 2, inputProof, "0x");
+      await bb.connect(s[1]).approveReport(sid, handles[0], 2, inputProof, "0x", 0n);
       // Encrypted version - can't check exact balances (euint64), just verify operation succeeded
     });
 
@@ -571,7 +573,7 @@ describe("FullFlow Integration", function () {
       const inp = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inp.add64(Number(bounty));
       const { handles, inputProof } = await inp.encrypt();
-      await bb.connect(s[1]).approveReport(sid, handles[0], 2, inputProof, "0x");
+      await bb.connect(s[1]).approveReport(sid, handles[0], 2, inputProof, "0x", 0n);
       // Available = 50k-30k = 20k. Admin tries to withdraw 50k
       // Encrypted version uses FHE.select - silently withdraws 20k instead of reverting
       await vault.connect(s[1]).initiateWithdrawal(PID, 50_000n * D6);
@@ -585,7 +587,7 @@ describe("FullFlow Integration", function () {
       const inp = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inp.add64(Number(1_000n * D6));
       const { handles, inputProof } = await inp.encrypt();
-      await bb.connect(s[1]).approveReport(sid, handles[0], 2, inputProof, "0x");
+      await bb.connect(s[1]).approveReport(sid, handles[0], 2, inputProof, "0x", 0n);
       expect(await merkleTree.nextIndex()).to.equal(2);
     });
 
@@ -624,6 +626,7 @@ describe("FullFlow Integration", function () {
           encryptedReport.encryptedGistLink,
           encryptedReport.encryptedAttachments,
           encryptedSymmetricKey,
+          encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
         ),
       ).to.emit(bb, "CriticalReportFlagged");
     });
@@ -643,7 +646,7 @@ describe("FullFlow Integration", function () {
       const inp = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inp.add64(Number(5_000n * D6));
       const { handles, inputProof } = await inp.encrypt();
-      await bb.connect(s[1]).approveReport(sid, handles[0], 3, inputProof, "0x"); // severity=3 Critical
+      await bb.connect(s[1]).approveReport(sid, handles[0], 3, inputProof, "0x", 0n); // severity=3 Critical
       // Allow score decrypt (caller = commitment owner, but for test use s[0] which is reputation.bugBountyProgram)
       await reputation.connect(s[0]).allowScoreDecrypt(commitment);
       const handle = await reputation.connect(s[0]).getMyScoreHandle(commitment);
@@ -759,7 +762,7 @@ describe("FullFlow Integration", function () {
       const inpBounty = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inpBounty.add64(Number(5_000n * D6));
       const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-      await bb.connect(s[1]).overrideApprove(sid, bountyHandles[0], 3, bountyProof);
+      await bb.connect(s[1]).overrideApprove(sid, bountyHandles[0], 3, bountyProof, 0n);
       expect((await bb.getSubmissionMeta(sid))[1]).to.equal(2n); // Approved
     });
 
@@ -843,7 +846,7 @@ describe("FullFlow Integration", function () {
       const inpBounty = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inpBounty.add64(Number(5_000n * D6));
       const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-      await bb.connect(s[1]).overrideApprove(sid, bountyHandles[0], 3, bountyProof);
+      await bb.connect(s[1]).overrideApprove(sid, bountyHandles[0], 3, bountyProof, 0n);
     });
 
     it("dispute status transitions: Voting → Resolved → Executed", async () => {
@@ -889,7 +892,7 @@ describe("FullFlow Integration", function () {
       const inpBounty = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inpBounty.add64(Number(5_000n * D6));
       const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-      await bb.connect(s[1]).overrideApprove(sid, bountyHandles[0], 2, bountyProof);
+      await bb.connect(s[1]).overrideApprove(sid, bountyHandles[0], 2, bountyProof, 0n);
     });
 
     it("locked funds remain after a different dispute admin win (vault guarded)", async () => {
@@ -900,7 +903,7 @@ describe("FullFlow Integration", function () {
       const inp = fhevm.createEncryptedInput(bbAddr, s[1].address);
       inp.add64(Number(bounty));
       const { handles, inputProof } = await inp.encrypt();
-      await bb.connect(s[1]).approveReport(sid0, handles[0], 2, inputProof, "0x");
+      await bb.connect(s[1]).approveReport(sid0, handles[0], 2, inputProof, "0x", 0n);
       // Encrypted version - can't check exact balance (euint64)
 
       const c2 = "0xbbbbccccddddeeee0000111122223333444455556666777788889999aaaabbbb";
