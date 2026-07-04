@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { bytesToHex } from 'viem';
 import { useEncrypt } from '@zama-fhe/react-sdk';
 import { CONTRACTS, BUG_BOUNTY_PROGRAM_ABI } from '@/lib/contracts';
 
@@ -29,7 +30,8 @@ export function useReviewReport() {
     submissionId: `0x${string}`,
     bountyAmount: bigint,
     finalSeverity: number,
-    notes: string
+    notes: string,
+    plainBountyAmount: bigint
   ) => {
     if (!address) throw new Error('Wallet not connected');
 
@@ -40,8 +42,8 @@ export function useReviewReport() {
         contractAddress: CONTRACTS.BUG_BOUNTY_PROGRAM,
         userAddress: address,
       });
-      const encryptedBounty = enc.encryptedValues[0]!;
-      const inputProof = enc.inputProof;
+      const encryptedBounty = bytesToHex(enc.handles[0]!);
+      const inputProof = bytesToHex(enc.inputProof);
 
       // Convert notes to bytes
       const notesBytes = `0x${Buffer.from(notes).toString('hex')}` as `0x${string}`;
@@ -50,12 +52,14 @@ export function useReviewReport() {
         address: CONTRACTS.BUG_BOUNTY_PROGRAM,
         abi: BUG_BOUNTY_PROGRAM_ABI,
         functionName: 'approveReport',
+        gas: 15_000_000n,
         args: [
           submissionId,
           encryptedBounty,
           finalSeverity,
           inputProof,
           notesBytes,
+          plainBountyAmount,
         ],
       });
     } catch (error) {
