@@ -31,11 +31,11 @@ export function useSubmissionCount() {
   const { data, isLoading, error } = useReadContract({
     address: CONTRACTS.BUG_BOUNTY_PROGRAM,
     abi: BUG_BOUNTY_PROGRAM_ABI,
-    functionName: 'getSubmissionCount',
+    functionName: 'getAllSubmissionIds',
   });
 
   return {
-    count: data ? Number(data) : 0,
+    count: data ? (data as `0x${string}`[]).length : 0,
     isLoading,
     error,
   };
