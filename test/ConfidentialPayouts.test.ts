@@ -75,17 +75,18 @@ describe("ConfidentialPayouts", function () {
 
   // Helper to lock funds via BugBountyProgram (real production flow)
   async function lockFundsViaBB(submissionId: string, amount: bigint) {
-    // First, submit a report (required before approve)
+    // Use submissionId as the commitment so vault.lockFunds keys on this value
+    // (matching the nullifier used in payouts.withdraw calls below).
     const inp = fhevm.createEncryptedInput(bbAddr, signers[0].address);
     inp.add8(1); // impactType
     inp.add8(2); // severity
     const { handles, inputProof } = await inp.encrypt();
-    
-    const commitment = ethers.keccak256(ethers.toUtf8Bytes("test-commitment"));
-    await bb.submitReport(
+
+    const commitment = submissionId; // commitment = nullifier so lock key matches
+    const tx = await bb.submitReport(
       commitment,
       "0x", // encryptedProtocol
-      "0x", // encryptedContractAddress  
+      "0x", // encryptedContractAddress
       handles[0], // impactType
       handles[1], // severity
       inputProof,
@@ -94,19 +95,22 @@ describe("ConfidentialPayouts", function () {
       "0x", // poc
       "0x", // gist
       "0x", // attachments
-      "0x"  // symmetricKey
+      "0x", // symmetricKey
+      "0x", // encryptedSymmetricKeyForReporter
     );
-    
-    // Review the report
-    await bb.connect(signers[1]).reviewReport(submissionId);
-    
-    // Create encrypted bounty amount
+    const receipt = await tx.wait();
+    const realSid = (
+      receipt?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any
+    ).args[0];
+
+    // Review + approve with the REAL submission ID
+    await bb.connect(signers[1]).reviewReport(realSid);
+
     const inpBounty = fhevm.createEncryptedInput(bbAddr, signers[1].address);
     inpBounty.add64(Number(amount));
     const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-    
-    // Approve report with encrypted bounty (this calls vault.lockFunds internally)
-    await bb.connect(signers[1]).approveReport(submissionId, bountyHandles[0], 2, bountyProof, "0x");
+
+    await bb.connect(signers[1]).approveReport(realSid, bountyHandles[0], 2, bountyProof, "0x", 0n);
   }
 
   it("withdraws bounty to fresh wallet", async () => {
