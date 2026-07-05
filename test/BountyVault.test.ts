@@ -24,17 +24,19 @@ describe("BountyVault", function () {
 
   // Helper to lock funds via BugBountyProgram (real production flow)
   async function lockFundsViaBB(submissionId: string, amount: bigint) {
-    // First, submit a report (required before approve)
+    // Submit report using submissionId as the commitment.
+    // After our fix, vault.lockFunds is keyed by r.commitment, so funds will
+    // be locked under `submissionId` — matching the test assertions.
     const inp = fhevm.createEncryptedInput(bbAddr, signers[0].address);
     inp.add8(1); // impactType
     inp.add8(2); // severity
     const { handles, inputProof } = await inp.encrypt();
-    
-    const commitment = ethers.keccak256(ethers.toUtf8Bytes("test-commitment"));
-    await bb.submitReport(
+
+    const commitment = submissionId; // use param as commitment so lock key matches
+    const tx = await bb.submitReport(
       commitment,
       "0x", // encryptedProtocol
-      "0x", // encryptedContractAddress  
+      "0x", // encryptedContractAddress
       handles[0], // impactType
       handles[1], // severity
       inputProof,
@@ -43,19 +45,22 @@ describe("BountyVault", function () {
       "0x", // poc
       "0x", // gist
       "0x", // attachments
-      "0x"  // symmetricKey
+      "0x", // symmetricKey
+      "0x", // encryptedSymmetricKeyForReporter
     );
-    
-    // Review the report
-    await bb.connect(signers[1]).reviewReport(submissionId);
-    
-    // Create encrypted bounty amount
+    const receipt = await tx.wait();
+    const realSid = (
+      receipt?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted") as any
+    ).args[0];
+
+    // Review + approve with the REAL submission ID
+    await bb.connect(signers[1]).reviewReport(realSid);
+
     const inpBounty = fhevm.createEncryptedInput(bbAddr, signers[1].address);
     inpBounty.add64(Number(amount));
     const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-    
-    // Approve report with encrypted bounty (this calls vault.lockFunds internally)
-    await bb.connect(signers[1]).approveReport(submissionId, bountyHandles[0], 2, bountyProof, "0x");
+
+    await bb.connect(signers[1]).approveReport(realSid, bountyHandles[0], 2, bountyProof, "0x", 0n);
   }
 
   // Decrypt helper functions (similar to Collateral.ts pattern)
