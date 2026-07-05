@@ -65,6 +65,7 @@ describe("DisputeResolver", function () {
       encryptedReport.encryptedGistLink,
       encryptedReport.encryptedAttachments,
       encryptedSymmetricKey,
+      encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
     );
     const receipt = await tx.wait();
     const ev = receipt?.logs.find((l: any) => l.fragment?.name === "ReportSubmitted");
@@ -293,6 +294,7 @@ describe("DisputeResolver", function () {
       encryptedReport.encryptedGistLink,
       encryptedReport.encryptedAttachments,
       encryptedSymmetricKey,
+      encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
     );
     const receipt = await tx.wait();
     const sid = (
@@ -394,7 +396,7 @@ describe("DisputeResolver", function () {
     const inpBounty = fhevm.createEncryptedInput(bbAddr, signers[1].address);
     inpBounty.add64(5_000n * 1_000_000n);
     const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-    await bb.connect(signers[1]).overrideApprove(sid, bountyHandles[0], 2, bountyProof);
+    await bb.connect(signers[1]).overrideApprove(sid, bountyHandles[0], 2, bountyProof, 0n);
   });
 
   it("voting deadline blocks late votes", async () => {
@@ -629,7 +631,7 @@ describe("DisputeResolver", function () {
     const inpBounty = fhevm.createEncryptedInput(bbAddr, signers[1].address);
     inpBounty.add64(5_000n * 1_000_000n);
     const { handles: bountyHandles, inputProof: bountyProof } = await inpBounty.encrypt();
-    await bb.connect(signers[1]).overrideApprove(sid, bountyHandles[0], 2, bountyProof);
+    await bb.connect(signers[1]).overrideApprove(sid, bountyHandles[0], 2, bountyProof, 0n);
   });
 
   it("getDisputeOutcome returns non-zero handles after resolve", async () => {
