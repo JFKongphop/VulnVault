@@ -67,9 +67,10 @@ describe("BountyClaimVerifier", function () {
   });
 
   it("should verify a valid proof", async function () {
-    // Generate random secrets
-    const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
-    const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
+    // Generate random secrets reduced to BN254 field size to avoid circuit overflow
+    const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+    const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
+    const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
     const impactType = 1n; // Low
     const severity = 2n;   // High
 
@@ -92,9 +93,10 @@ describe("BountyClaimVerifier", function () {
   });
 
   it("should reject proof with wrong public signals", async function () {
-    // Generate valid proof
-    const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
-    const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
+    // Generate valid proof with field-reduced secrets
+    const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+    const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
+    const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
     const impactType = 1n;
     const severity = 2n;
 
@@ -119,9 +121,10 @@ describe("BountyClaimVerifier", function () {
   });
 
   it("should verify multiple different proofs", async function () {
+    const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
     for (let i = 0; i < 3; i++) {
-      const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
-      const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32)));
+      const secret0 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
+      const secret1 = BigInt(ethers.hexlify(ethers.randomBytes(32))) % FIELD;
       const impactType = BigInt(i % 4); // Rotate through impact types
       const severity = BigInt((i + 1) % 4); // Rotate through severities
 
