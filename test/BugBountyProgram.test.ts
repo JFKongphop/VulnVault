@@ -80,6 +80,7 @@ describe("BugBountyProgram", function () {
         encryptedReport.encryptedGistLink,
         encryptedReport.encryptedAttachments,
         encryptedSymmetricKey,
+        encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
       );
 
     const receipt = await tx.wait();
@@ -150,6 +151,7 @@ describe("BugBountyProgram", function () {
         encryptedReport.encryptedGistLink,
         encryptedReport.encryptedAttachments,
         encryptedSymmetricKey,
+        encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
       );
 
       const receipt = await tx.wait();
@@ -247,6 +249,7 @@ describe("BugBountyProgram", function () {
           encryptedReport.encryptedGistLink,
           encryptedReport.encryptedAttachments,
           encryptedSymmetricKey,
+          encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
         );
 
       const receipt = await tx.wait();
@@ -348,6 +351,7 @@ describe("BugBountyProgram", function () {
           encryptedReport.encryptedGistLink,
           encryptedReport.encryptedAttachments,
           encryptedSymmetricKey,
+          encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
         );
 
       // Verify encrypted data does NOT contain plaintext
@@ -422,6 +426,7 @@ describe("BugBountyProgram", function () {
           encrypted1.encryptedGistLink,
           encrypted1.encryptedAttachments,
           key1ForAdmin,
+          key1ForAdmin, // encryptedSymmetricKeyForReporter
         );
 
       const input2 = fhevm.createEncryptedInput(bbAddr, signers[2].address);
@@ -444,6 +449,7 @@ describe("BugBountyProgram", function () {
           encrypted2.encryptedGistLink,
           encrypted2.encryptedAttachments,
           key2ForAdmin,
+          key2ForAdmin, // encryptedSymmetricKeyForReporter
         );
 
       const receipt1 = await tx1.wait();
@@ -598,6 +604,7 @@ describe("BugBountyProgram", function () {
           encryptedReport.encryptedGistLink,
           encryptedReport.encryptedAttachments,
           encryptedSymmetricKey,
+          encryptedSymmetricKey, // encryptedSymmetricKeyForReporter
         );
 
       const receipt = await tx.wait();
@@ -1007,7 +1014,7 @@ describe("BugBountyProgram", function () {
       
       await bb
         .connect(signers[1])
-        .approveReport(submissionId1, handles[0], 2, inputProof, testNotes);
+        .approveReport(submissionId1, handles[0], 2, inputProof, testNotes, 0n);
 
       // Admin can access notes
       const adminView = await bb.connect(signers[1]).getAdminNotes(submissionId1);
