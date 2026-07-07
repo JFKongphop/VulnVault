@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { usePublicClient, useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { CONTRACTS, CONFIDENTIAL_PAYOUTS_ABI, MERKLE_TREE_ABI } from '@/lib/contracts';
 import { computeMerklePath, TREE_LEVELS } from '@/lib/merkleUtils';
+import { groth16 } from 'snarkjs';
 
 interface WithdrawParams {
   secret0: bigint;
@@ -130,8 +131,7 @@ export function useWithdraw(programId: bigint) {
 
       // Step 6: Generate Groth16 proof in browser
       setProofStatus('Generating ZK proof (this takes ~10 s)…');
-      const snarkjs = await import('snarkjs');
-      const { proof, publicSignals: _ps } = await snarkjs.groth16.fullProve(
+      const { proof, publicSignals: _ps } = await groth16.fullProve(
         circuitInputs,
         new Uint8Array(wasmBuffer),
         new Uint8Array(zkeyBuffer),
