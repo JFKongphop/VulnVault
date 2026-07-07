@@ -2,6 +2,10 @@
 
 A fully on-chain bug bounty platform where every sensitive report field is encrypted using Fully Homomorphic Encryption (FHE) via [fhEVM](https://github.com/zama-ai/fhevm) by Zama, and payouts are withdrawn anonymously using zero-knowledge proofs (Groth16 / Circom).
 
+## Demo Video
+
+[![VulnVault Demo](./screen.png)](https://youtu.be/DfIy47F9QK4)
+
 ---
 
 ## Cryptography Stack
